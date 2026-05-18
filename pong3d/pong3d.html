@@ -341,8 +341,6 @@ function updateVRScore() {
   const W = vrScoreCanvas.width, H = vrScoreCanvas.height;
   const ctx = vrScoreCtx;
   ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = 'rgba(0,0,12,0.80)';
-  ctx.fillRect(4, 4, W - 8, H - 8);
   const PIP = 22, PAD = 14;
   const fs  = Math.floor(H * 0.82);
   ctx.font = 'bold ' + fs + "px 'Courier New', monospace";
