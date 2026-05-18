@@ -319,6 +319,43 @@ arenaRoot.add(paddle1);
 arenaRoot.add(paddle2);
 const paddleFlash = [0, 0];
 
+// VR score panel — canvas texture floating above the net, visible in headset
+const vrScoreCanvas = document.createElement('canvas');
+vrScoreCanvas.width = 256; vrScoreCanvas.height = 96;
+const vrScoreCtx = vrScoreCanvas.getContext('2d');
+const vrScoreTex = new THREE.CanvasTexture(vrScoreCanvas);
+const vrScoreMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.40, 0.15),
+  new THREE.MeshBasicMaterial({ map: vrScoreTex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
+);
+vrScoreMesh.position.set(0, AY + AH + 0.18, AD * 0.5);
+vrScoreMesh.rotation.set(-0.18, Math.PI, 0);  // face P1, slight downward tilt
+vrScoreMesh.visible = false;
+arenaRoot.add(vrScoreMesh);
+
+function updateVRScore() {
+  const W = vrScoreCanvas.width, H = vrScoreCanvas.height;
+  const ctx = vrScoreCtx;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(0,0,12,0.78)';
+  ctx.fillRect(3, 3, W - 6, H - 6);
+  const fs = Math.floor(H * 0.70);
+  ctx.font = 'bold ' + fs + "px 'Courier New', monospace";
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#5599ff';
+  ctx.textAlign = 'right';
+  ctx.fillText(score[0], W * 0.42, H * 0.52);
+  ctx.fillStyle = '#888';
+  ctx.font = 'bold ' + Math.floor(H * 0.45) + "px 'Courier New', monospace";
+  ctx.textAlign = 'center';
+  ctx.fillText(':', W * 0.5, H * 0.46);
+  ctx.fillStyle = '#ff5577';
+  ctx.font = 'bold ' + fs + "px 'Courier New', monospace";
+  ctx.textAlign = 'left';
+  ctx.fillText(score[1], W * 0.58, H * 0.52);
+  vrScoreTex.needsUpdate = true;
+}
+
 // Miss rings
 function makeMissRing(color, z) {
   const g = new THREE.Group();
@@ -419,6 +456,7 @@ function enterAttractMode(fromGame = false) {
   serving   = false;
   paddle1.visible = false;
   paddle2.visible = false;
+  vrScoreMesh.visible = false;
   serveAttract();
   if (renderer.xr.isPresenting) {
     startArenaAnim(arenaRoot.position.clone(), arenaRoot.scale.x, ARENA_MINI_POS, ARENA_MINI_SCALE);
@@ -437,6 +475,8 @@ function startGame() {
   score[0] = score[1] = 0;
   scoreP1El.textContent = '0';
   scoreP2El.textContent = '0';
+  updateVRScore();
+  vrScoreMesh.visible = renderer.xr.isPresenting;
   attractEl.classList.remove('visible');
   // Freeze ball until serve sequence starts
   ball.vel.set(0, 0, 0);
@@ -640,7 +680,7 @@ function updateBall(dt) {
         missFlash[0] = 1.0;
       }
       if (ball.pos.z < -0.25) {
-        score[1]++; scoreP1El.textContent = score[0]; scoreP2El.textContent = score[1];
+        score[1]++; scoreP1El.textContent = score[0]; scoreP2El.textContent = score[1]; updateVRScore();
         wallFlash[0] = 1.0;
         if (score[1] >= 11) enterAttractMode(true); else startServe(true);
       }
@@ -659,7 +699,7 @@ function updateBall(dt) {
         missFlash[1] = 1.0;
       }
       if (ball.pos.z > AD + 0.25) {
-        score[0]++; scoreP1El.textContent = score[0]; scoreP2El.textContent = score[1];
+        score[0]++; scoreP1El.textContent = score[0]; scoreP2El.textContent = score[1]; updateVRScore();
         wallFlash[1] = 1.0;
         if (score[0] >= 11) enterAttractMode(true); else startServe(true);
       }
