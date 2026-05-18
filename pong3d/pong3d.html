@@ -170,7 +170,7 @@ function startCamAnim(fromPos, fromTgt, toPos, toTgt, onDone) {
 }
 
 // ── VR arena animation — miniature attract ↔ full scale ───────────────────────
-const ARENA_MINI_POS    = new THREE.Vector3(0, 1.1, 0.5);
+const ARENA_MINI_POS    = new THREE.Vector3(0, 0.75, 0.6);
 const ARENA_MINI_SCALE  = 0.18;
 const ARENA_MINI_ROT_Y  = Math.PI / 4;   // 45° isometric-ish view in attract
 const ARENA_FULL_POS    = new THREE.Vector3(0, 0, 0);
@@ -378,7 +378,7 @@ const vrStartMesh = new THREE.Mesh(
   new THREE.PlaneGeometry(0.22, 0.052),
   new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(vrStartCanvas), transparent: true, depthWrite: false })
 );
-vrStartMesh.position.set(0, 0.96, 0.76);
+vrStartMesh.position.set(0, 0.58, 0.76);
 vrStartMesh.rotation.y = Math.PI;   // face player
 vrStartMesh.visible = false;
 scene.add(vrStartMesh);
