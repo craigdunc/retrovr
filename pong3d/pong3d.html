@@ -511,6 +511,15 @@ function updateCpu(dt) {
 let xrSession = null;
 renderer.xr.addEventListener('sessionstart', () => {
   xrSession = renderer.xr.getSession();
+  // WebXR default forward is -Z; our arena extends in +Z — rotate 180° around Y
+  const refSpace = renderer.xr.getReferenceSpace();
+  if (refSpace) {
+    renderer.xr.setReferenceSpace(
+      refSpace.getOffsetReferenceSpace(
+        new XRRigidTransform({ x: 0, y: 0, z: 0, w: 1 }, { x: 0, y: 1, z: 0, w: 0 })
+      )
+    );
+  }
   if (gameState === 'attract' && camAnimTime < 0) startGame();
 });
 renderer.xr.addEventListener('sessionend', () => { xrSession = null; });
