@@ -332,7 +332,10 @@ const vrScoreMesh = new THREE.Mesh(
   new THREE.PlaneGeometry(0.60, 0.19),
   new THREE.MeshBasicMaterial({ map: vrScoreTex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
 );
-vrScoreMesh.position.set(0, AY + AH - 0.07, AD * 0.5);
+const SCORE_GAME_Y    = AY + AH - 0.07;   // inside arena, near ceiling
+const SCORE_ATTRACT_Y = AY + AH + 0.28;   // above arena in attract mode
+let   vrScoreTargetY  = SCORE_ATTRACT_Y;
+vrScoreMesh.position.set(0, SCORE_ATTRACT_Y, AD * 0.5);
 vrScoreMesh.rotation.set(0, Math.PI, 0);
 vrScoreMesh.visible = false;
 arenaRoot.add(vrScoreMesh);
@@ -420,6 +423,7 @@ function triggerBounceRing(x, y, z, axis) {
   if (axis === 'x') r.group.rotation.y = Math.PI / 2;
   if (axis === 'y') r.group.rotation.x = Math.PI / 2;
   r.flash = 1.0;
+  if (gameState === 'playing') soundWall();
 }
 
 // ── Game state ────────────────────────────────────────────────────────────────
@@ -484,19 +488,22 @@ function enterAttractMode(fromGame = false) {
   serving   = false;
   paddle1.visible = false;
   paddle2.visible = false;
-  vrScoreMesh.visible = false;
   serveAttract();
   if (renderer.xr.isPresenting) {
     vrStartMesh.visible = true;
+    vrScoreTargetY = SCORE_ATTRACT_Y;   // float score up above arena
     startArenaAnim(arenaRoot.position.clone(), arenaRoot.scale.x, arenaRoot.rotation.y,
                    ARENA_MINI_POS, ARENA_MINI_SCALE, ARENA_MINI_ROT_Y);
-  } else if (fromGame) {
-    startCamAnim(camera.position.clone(), controls.target.clone(),
-                 CAM_INTRO_POS, CAM_INTRO_TARGET,
-                 () => { camAtGame = false; attractEl.classList.add('visible'); });
   } else {
-    camAtGame = false;
-    attractEl.classList.add('visible');
+    vrScoreMesh.visible = false;
+    if (fromGame) {
+      startCamAnim(camera.position.clone(), controls.target.clone(),
+                   CAM_INTRO_POS, CAM_INTRO_TARGET,
+                   () => { camAtGame = false; attractEl.classList.add('visible'); });
+    } else {
+      camAtGame = false;
+      attractEl.classList.add('visible');
+    }
   }
 }
 
@@ -506,8 +513,11 @@ function startGame() {
   scoreP1El.textContent = '0';
   scoreP2El.textContent = '0';
   updateVRScore();
-  vrScoreMesh.visible = renderer.xr.isPresenting;
   vrStartMesh.visible = false;
+  if (renderer.xr.isPresenting) {
+    vrScoreMesh.visible = true;
+    vrScoreTargetY = SCORE_GAME_Y;
+  }
   attractEl.classList.remove('visible');
   // Freeze ball until serve sequence starts
   ball.vel.set(0, 0, 0);
@@ -547,6 +557,7 @@ function applyPaddleHit(paddleX, paddleY, newZSign, paddleIdx) {
   const latX = hitDist > 0.001 ? dx / hitDist : 0;
   const latY = hitDist > 0.001 ? dy / hitDist : 0;
   ball.vel.set(latX * lat * spd, latY * lat * spd, newZSign * fwd * spd);
+  soundPaddle();
 }
 
 // ── Mouse → P1 (desktop) ──────────────────────────────────────────────────────
@@ -612,6 +623,9 @@ renderer.xr.addEventListener('sessionstart', () => {
   arenaRoot.scale.setScalar(ARENA_MINI_SCALE);
   arenaRoot.rotation.y = ARENA_MINI_ROT_Y;
   vrStartMesh.visible = true;
+  vrScoreMesh.visible = true;
+  vrScoreMesh.position.y = SCORE_ATTRACT_Y;
+  vrScoreTargetY = SCORE_ATTRACT_Y;
 
   xrSession.addEventListener('selectstart', () => {
     if (gameState === 'attract' && arenaAnimTime < 0) startGame();
@@ -625,6 +639,7 @@ renderer.xr.addEventListener('sessionend', () => {
   arenaRoot.scale.setScalar(1);
   arenaRoot.rotation.y = 0;
   vrStartMesh.visible = false;
+  vrScoreMesh.visible = false;
   enterAttractMode();
 });
 
@@ -715,7 +730,7 @@ function updateBall(dt) {
         missFlash[0] = 1.0;
       }
       if (ball.pos.z < -0.25) {
-        score[1]++; scoreP1El.textContent = score[0]; scoreP2El.textContent = score[1]; updateVRScore();
+        score[1]++; scoreP1El.textContent = score[0]; scoreP2El.textContent = score[1]; updateVRScore(); soundScore();
         wallFlash[0] = 1.0;
         if (score[1] >= 11) enterAttractMode(true); else startServe(true);
       }
@@ -734,12 +749,36 @@ function updateBall(dt) {
         missFlash[1] = 1.0;
       }
       if (ball.pos.z > AD + 0.25) {
-        score[0]++; scoreP1El.textContent = score[0]; scoreP2El.textContent = score[1]; updateVRScore();
+        score[0]++; scoreP1El.textContent = score[0]; scoreP2El.textContent = score[1]; updateVRScore(); soundScore();
         wallFlash[1] = 1.0;
         if (score[0] >= 11) enterAttractMode(true); else startServe(true);
       }
     }
   }
+}
+
+// ── Audio ─────────────────────────────────────────────────────────────────────
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function blip(freq, dur, vol = 0.35) {
+  try {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type = 'square';
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  } catch (e) {}
+}
+
+const soundPaddle = () => blip(480, 0.08, 0.4);
+const soundWall   = () => blip(240, 0.06, 0.2);
+function soundScore() {
+  blip(160, 0.12, 0.45);
+  setTimeout(() => blip(100, 0.18, 0.45), 130);
 }
 
 // ── Resize ────────────────────────────────────────────────────────────────────
@@ -775,6 +814,11 @@ renderer.setAnimationLoop((time, frame) => {
   paddle1.rotation.set(0, 0, 0);
   paddle2.position.set(p2.x, p2.y, AD - PADDLE_INSET);
   paddle2.rotation.set(0, Math.PI, 0);
+
+  // Score panel drifts between game position (inside arena) and attract position (above)
+  if (vrScoreMesh.visible) {
+    vrScoreMesh.position.y += (vrScoreTargetY - vrScoreMesh.position.y) * Math.min(dt * 2.5, 1);
+  }
 
   // Arena animation (miniature ↔ full)
   if (arenaAnimTime >= 0) {
