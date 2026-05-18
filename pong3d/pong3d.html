@@ -533,7 +533,7 @@ function updateXRPaddles(frame) {
   const rs = renderer.xr.getReferenceSpace();
   if (!rs) return;
   for (const src of xrSession.inputSources) {
-    const target = src.handedness === 'left' ? p1 : p2;
+    const target = src.handedness === 'right' ? p1 : p2;
     if (src.hand) {
       const wrist = src.hand.get('wrist');
       if (wrist) {
