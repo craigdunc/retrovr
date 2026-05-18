@@ -332,8 +332,8 @@ const vrScoreMesh = new THREE.Mesh(
   new THREE.PlaneGeometry(0.60, 0.19),
   new THREE.MeshBasicMaterial({ map: vrScoreTex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
 );
-vrScoreMesh.position.set(0, AY + AH + 0.22, AD * 0.5);
-vrScoreMesh.rotation.set(-0.18, Math.PI, 0);
+vrScoreMesh.position.set(0, AY + AH - 0.07, AD * 0.5);
+vrScoreMesh.rotation.set(0, Math.PI, 0);
 vrScoreMesh.visible = false;
 arenaRoot.add(vrScoreMesh);
 
@@ -341,19 +341,22 @@ function updateVRScore() {
   const W = vrScoreCanvas.width, H = vrScoreCanvas.height;
   const ctx = vrScoreCtx;
   ctx.clearRect(0, 0, W, H);
-  const PIP = 22, PAD = 14;
+  const PIP = 20, GAP = 8;
   const fs  = Math.floor(H * 0.82);
   ctx.font = 'bold ' + fs + "px 'Courier New', monospace";
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'center';
-  // P1 — blue pip top-left, white number
+  // Use measureText so pip hugs the number even for 2-digit scores
+  const p1w = ctx.measureText(String(score[0])).width;
+  const p2w = ctx.measureText(String(score[1])).width;
+  // P1 — blue pip snug left of number
   ctx.fillStyle = '#3377dd';
-  ctx.fillRect(PAD, PAD, PIP, PIP);
+  ctx.fillRect(W * 0.27 - p1w / 2 - GAP - PIP, 10, PIP, PIP);
   ctx.fillStyle = '#ffffff';
   ctx.fillText(score[0], W * 0.27, H * 0.56);
-  // P2 — red pip top-left of right half, white number
+  // P2 — red pip snug left of number
   ctx.fillStyle = '#dd3355';
-  ctx.fillRect(W / 2 + PAD, PAD, PIP, PIP);
+  ctx.fillRect(W * 0.73 - p2w / 2 - GAP - PIP, 10, PIP, PIP);
   ctx.fillStyle = '#ffffff';
   ctx.fillText(score[1], W * 0.73, H * 0.56);
   vrScoreTex.needsUpdate = true;
