@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>DUEL</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #4a5a4a; overflow: hidden; }
+    #info {
+      position: absolute; top: 14px; left: 50%;
+      transform: translateX(-50%);
+      color: #fff; font-family: monospace; font-size: 13px;
+      text-align: center; line-height: 1.8; pointer-events: none;
+      letter-spacing: 0.12em; text-shadow: 0 1px 4px #0008;
+    }
+    #legend {
+      position: absolute; bottom: 60px; left: 14px;
+      color: #aab; font-family: monospace; font-size: 11px;
+      line-height: 2; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+<div id="info">DUEL<br>
+  <span style="font-size:10px;opacity:0.65">
+    wall bounce · table-tennis arena · table at waist height
+  </span>
+</div>
+<div id="legend">drag to orbit · scroll to zoom</div>
+<div id="err" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#f66;font-family:monospace;font-size:13px;text-align:center"></div>
+<script>window.onerror = (msg) => { const e = document.getElementById('err'); e.style.display='block'; e.textContent = 'Error: ' + msg; };</script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+// ── Renderer ──────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+document.body.appendChild(VRButton.createButton(renderer));
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x4a5a4a);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 100);
+camera.position.set(5.2, 4.0, -1.4);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.3, 1.5);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.update();
+
+// ── Dimensions (metres) ───────────────────────────────────────────────────────
+const TABLE_Y  = 0.76;   // waist-height table surface
+const TABLE_L  = 3.00;   // table length  (z: 0 → 3)
+const TABLE_W  = 1.80;   // table width   (x: -0.9 → +0.9)
+const TABLE_T  = 0.05;   // table top thickness
+const LEG_H    = TABLE_Y - TABLE_T;
+
+const ARENA_H  = 2.10;   // play space above table
+const ARENA_CZ = TABLE_L / 2;  // 1.5
+
+const SHIELD_R = 0.20;
+const BLK_W    = 0.38;   // wide, flat shoebox bricks
+const BLK_H    = 0.15;   // short — landscape orientation
+const BLK_D    = 0.13;
+const BLK_STEP = 0.41;   // small gap: 0.41 - 0.38 = 0.03m
+const HAND_Y   = TABLE_Y + 0.38;  // hands above table
+const HAND_X   = 0.78;   // hands near outermost block
+const BLOCK_Z  = 0.14;
+
+const P1_Z = 0.0;
+const P2_Z = TABLE_L;   // 3.0
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function seg(a, b, color, opacity) {
+  const mat = opacity !== undefined
+    ? new THREE.LineBasicMaterial({ color, transparent: true, opacity })
+    : new THREE.LineBasicMaterial({ color });
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), mat);
+}
+
+function box(w, h, d, color, opacity, wireframe) {
+  const geo  = new THREE.BoxGeometry(w, h, d);
+  const mat  = new THREE.MeshBasicMaterial({
+    color, wireframe: !!wireframe,
+    transparent: opacity !== undefined, opacity: opacity ?? 1.0
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
+// ── Table ─────────────────────────────────────────────────────────────────────
+{
+  // Table top
+  const top = box(TABLE_W, TABLE_T, TABLE_L, 0x1e6b30);
+  top.position.set(0, TABLE_Y - TABLE_T / 2, ARENA_CZ);
+  scene.add(top);
+
+  // Table top edges
+  const topEdges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(TABLE_W, TABLE_T, TABLE_L)),
+    new THREE.LineBasicMaterial({ color: 0x336622 })
+  );
+  topEdges.position.copy(top.position);
+  scene.add(topEdges);
+
+  // White lines on table surface
+  const LY = TABLE_Y + 0.002;
+  const x1 = -TABLE_W / 2, x2 = TABLE_W / 2;
+
+  // Boundary rectangle
+  const border = [
+    new THREE.Vector3(x1, LY, 0),   new THREE.Vector3(x2, LY, 0),
+    new THREE.Vector3(x2, LY, TABLE_L), new THREE.Vector3(x1, LY, TABLE_L),
+    new THREE.Vector3(x1, LY, 0),
+  ];
+  scene.add(new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(border),
+    new THREE.LineBasicMaterial({ color: 0xffffff })
+  ));
+
+  // Centre line (net position)
+  scene.add(seg(
+    new THREE.Vector3(x1, LY, ARENA_CZ),
+    new THREE.Vector3(x2, LY, ARENA_CZ),
+    0xffffff
+  ));
+
+  // Longitudinal centre line
+  scene.add(seg(
+    new THREE.Vector3(0, LY, 0),
+    new THREE.Vector3(0, LY, TABLE_L),
+    0xffffff
+  ));
+
+  // Table legs (4 corners)
+  const legW = 0.06;
+  [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(([sx, sz]) => {
+    const leg = box(legW, LEG_H, legW, 0x5a3510);
+    leg.position.set(sx * (TABLE_W/2 - 0.12), LEG_H/2, ARENA_CZ + sz * (TABLE_L/2 - 0.12));
+    scene.add(leg);
+  });
+}
+
+// ── Arena walls + ceiling (above table) ──────────────────────────────────────
+{
+  const geo = new THREE.BoxGeometry(TABLE_W, ARENA_H, TABLE_L);
+  const cy  = TABLE_Y + ARENA_H / 2;
+
+  const walls = new THREE.Mesh(geo,
+    new THREE.MeshBasicMaterial({ color: 0x3a6a44, transparent: true, opacity: 0.16, side: THREE.BackSide })
+  );
+  walls.position.set(0, cy, ARENA_CZ);
+  scene.add(walls);
+
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geo),
+    new THREE.LineBasicMaterial({ color: 0x77bb88 })
+  );
+  edges.position.set(0, cy, ARENA_CZ);
+  scene.add(edges);
+}
+
+// ── makePlayer ────────────────────────────────────────────────────────────────
+function makePlayer(shootHand) {
+  const g = new THREE.Group();
+  const C = 0xffffff;
+
+  const J = {
+    lFoot:     new THREE.Vector3(-0.15, 0,    0),
+    rFoot:     new THREE.Vector3( 0.15, 0,    0),
+    lKnee:     new THREE.Vector3(-0.15, 0.55, 0),
+    rKnee:     new THREE.Vector3( 0.15, 0.55, 0),
+    lHip:      new THREE.Vector3(-0.12, 1.02, 0),
+    rHip:      new THREE.Vector3( 0.12, 1.02, 0),
+    spine:     new THREE.Vector3( 0,    1.30, 0),
+    lShoulder: new THREE.Vector3(-0.30, 1.65, 0),
+    rShoulder: new THREE.Vector3( 0.30, 1.65, 0),
+    neck:      new THREE.Vector3( 0,    1.75, 0),
+    lElbow:    new THREE.Vector3(-0.50, 1.42, 0),
+    rElbow:    new THREE.Vector3( 0.50, 1.42, 0),
+    lHand:     new THREE.Vector3(-HAND_X, HAND_Y, 0.05),
+    rHand:     new THREE.Vector3( HAND_X, HAND_Y, 0.05),
+  };
+
+  [
+    ['lFoot','lKnee'],['lKnee','lHip'],
+    ['rFoot','rKnee'],['rKnee','rHip'],
+    ['lHip','rHip'],['lHip','spine'],['rHip','spine'],
+    ['spine','lShoulder'],['spine','rShoulder'],['spine','neck'],
+    ['lShoulder','lElbow'],['lElbow','lHand'],
+    ['rShoulder','rElbow'],['rElbow','rHand'],
+  ].forEach(([a,b]) => g.add(seg(J[a], J[b], C)));
+
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.145, 12, 8),
+    new THREE.MeshBasicMaterial({ color: C, wireframe: true })
+  );
+  head.position.set(0, 1.92, 0);
+  g.add(head);
+
+  function addDisc(pos, isShoot) {
+    const sg = new THREE.Group();
+    if (isShoot) {
+      sg.add(new THREE.Mesh(
+        new THREE.SphereGeometry(0.04, 10, 7),
+        new THREE.MeshBasicMaterial({ color: 0x44ccbb })
+      ));
+    } else {
+      sg.add(new THREE.Mesh(
+        new THREE.CircleGeometry(SHIELD_R, 32),
+        new THREE.MeshBasicMaterial({ color: 0x44ccbb, transparent: true, opacity: 0.22, side: THREE.DoubleSide })
+      ));
+      sg.add(new THREE.Mesh(
+        new THREE.TorusGeometry(SHIELD_R, 0.014, 8, 40),
+        new THREE.MeshBasicMaterial({ color: 0x55ddcc })
+      ));
+      [
+        [new THREE.Vector3(-SHIELD_R,0,0), new THREE.Vector3(SHIELD_R,0,0)],
+        [new THREE.Vector3(0,-SHIELD_R,0), new THREE.Vector3(0,SHIELD_R,0)],
+      ].forEach(([a,b]) => sg.add(seg(a, b, 0x228877)));
+    }
+    sg.position.copy(pos);
+    g.add(sg);
+  }
+
+  addDisc(J.lHand, shootHand === 'left');
+  addDisc(J.rHand, shootHand === 'right');
+
+  [-2,-1,0,1,2].forEach(i => {
+    const isChest = i === 0;
+    const s   = isChest ? 1.25 : 1.0;
+    const geo = new THREE.BoxGeometry(BLK_W * s, BLK_H * s, BLK_D * s);
+
+    const fill = new THREE.Mesh(geo,
+      new THREE.MeshBasicMaterial({ color: isChest ? 0xc07028 : 0xd4944a, transparent: true, opacity: 0.82 })
+    );
+    fill.position.set(i * BLK_STEP, HAND_Y, BLOCK_Z);
+    g.add(fill);
+
+    const edges = new THREE.LineSegments(
+      new THREE.EdgesGeometry(geo),
+      new THREE.LineBasicMaterial({ color: isChest ? 0x7a3410 : 0x8b5218 })
+    );
+    edges.position.set(i * BLK_STEP, HAND_Y, BLOCK_Z);
+    g.add(edges);
+  });
+
+  return g;
+}
+
+// ── Players ───────────────────────────────────────────────────────────────────
+const p1 = makePlayer('left');   // left hand in shoot mode
+p1.position.set(0, 0, P1_Z);
+scene.add(p1);
+
+const p2 = makePlayer(null);
+p2.position.set(0, 0, P2_Z);
+p2.rotation.y = Math.PI;
+scene.add(p2);
+
+// ── Disc trajectory: wall bounce ──────────────────────────────────────────────
+// P1 left hand shoots at steep angle toward left wall, bounces to P2 off-centre
+const HY   = HAND_Y;
+const TRAJ = [
+  new THREE.Vector3(-0.80, HY, P1_Z + 0.05),   // P1 left hand (shoot mode)
+  new THREE.Vector3(-0.90, HY, 0.45),           // wall hit
+  new THREE.Vector3( 0.20, HY, P2_Z - 0.05),   // toward P2
+];
+
+// Return trajectory (P2 shoots back, different angle)
+const TRAJ_R = [
+  new THREE.Vector3( 0.55, HY, P2_Z - 0.05),   // P2 right hand
+  new THREE.Vector3( 0.90, HY, 2.55),           // right wall hit
+  new THREE.Vector3(-0.30, HY, P1_Z + 0.05),   // back to P1
+];
+
+// Static ghost trail lines showing the trajectory path
+const TRAJ_COL = 0x33ddbb;
+scene.add(seg(TRAJ[0], TRAJ[1], TRAJ_COL, 0.25));
+scene.add(seg(TRAJ[1], TRAJ[2], TRAJ_COL, 0.25));
+scene.add(seg(TRAJ_R[0], TRAJ_R[1], TRAJ_COL, 0.15));
+scene.add(seg(TRAJ_R[1], TRAJ_R[2], TRAJ_COL, 0.15));
+
+// Wall bounce markers
+[TRAJ[1], TRAJ_R[1]].forEach(pt => {
+  const dot = new THREE.Mesh(
+    new THREE.SphereGeometry(0.025, 8, 6),
+    new THREE.MeshBasicMaterial({ color: TRAJ_COL })
+  );
+  dot.position.copy(pt);
+  scene.add(dot);
+});
+
+// ── Animated disc ─────────────────────────────────────────────────────────────
+const discMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(0.06, 10, 8),
+  new THREE.MeshBasicMaterial({ color: 0x44ccbb })
+);
+scene.add(discMesh);
+
+// Pre-compute trajectory segment distances and fractions
+const d01 = TRAJ[0].distanceTo(TRAJ[1]);
+const d12 = TRAJ[1].distanceTo(TRAJ[2]);
+const totalFwd = d01 + d12;
+const fwdFrac  = d01 / totalFwd;   // fraction of forward trip at wall
+
+const dr01 = TRAJ_R[0].distanceTo(TRAJ_R[1]);
+const dr12 = TRAJ_R[1].distanceTo(TRAJ_R[2]);
+const totalRev = dr01 + dr12;
+const revFrac  = dr01 / totalRev;
+
+// t ∈ [0,1): first half = P1→P2, second half = P2→P1
+let discT = 0;
+const DISC_SPEED = 0.55;  // cycles per second
+
+function updateDisc(dt) {
+  discT = (discT + dt * DISC_SPEED) % 1.0;
+
+  const half = 0.5;
+  if (discT < half) {
+    // P1 shoots toward P2 via left wall
+    const localT = discT / half;
+    if (localT < fwdFrac) {
+      discMesh.position.lerpVectors(TRAJ[0], TRAJ[1], localT / fwdFrac);
+    } else {
+      discMesh.position.lerpVectors(TRAJ[1], TRAJ[2], (localT - fwdFrac) / (1 - fwdFrac));
+    }
+  } else {
+    // P2 shoots back toward P1 via right wall
+    const localT = (discT - half) / half;
+    if (localT < revFrac) {
+      discMesh.position.lerpVectors(TRAJ_R[0], TRAJ_R[1], localT / revFrac);
+    } else {
+      discMesh.position.lerpVectors(TRAJ_R[1], TRAJ_R[2], (localT - revFrac) / (1 - revFrac));
+    }
+  }
+}
+
+// ── Floor ─────────────────────────────────────────────────────────────────────
+scene.add(new THREE.GridHelper(10, 28, 0x3a4a3a, 0x333a33));
+
+// ── Resize / loop ─────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+const clock = new THREE.Clock();
+
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  updateDisc(dt);
+  controls.update();
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
