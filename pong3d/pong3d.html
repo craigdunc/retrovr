@@ -568,7 +568,11 @@ const mouse2    = new THREE.Vector2();
 const p1Plane   = new THREE.Plane(new THREE.Vector3(0, 0, 1), -PADDLE_INSET);
 
 window.addEventListener('keydown', () => {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
   if (gameState === 'attract' && camAnimTime < 0) startGame();
+});
+window.addEventListener('pointerdown', () => {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
 });
 
 window.addEventListener('mousemove', e => {
@@ -634,6 +638,7 @@ renderer.xr.addEventListener('sessionstart', () => {
   vrScoreTargetY = SCORE_ATTRACT_Y;
 
   xrSession.addEventListener('selectstart', () => {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
     if (gameState === 'attract' && arenaAnimTime < 0) startGame();
   });
 });
@@ -775,8 +780,8 @@ function updateBall(dt) {
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 function blip(freq, dur, vol = 0.35) {
+  if (audioCtx.state !== 'running') return;
   try {
-    if (audioCtx.state === 'suspended') audioCtx.resume();
     const o = audioCtx.createOscillator();
     const g = audioCtx.createGain();
     o.connect(g); g.connect(audioCtx.destination);
