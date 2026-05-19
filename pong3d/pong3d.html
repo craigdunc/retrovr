@@ -135,6 +135,8 @@ const AY = 0.76;
 const BALL_R       = 0.024;
 const PADDLE_R     = 0.080;
 const PADDLE_INSET = 0.15;
+const P1_SENS      = 1.8;            // paddle sensitivity — amplifies movement relative to arena centre
+const ARENA_CY     = AY + AH * 0.5; // ≈ 1.141 m — pivot for Y sensitivity
 
 const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.01, 60);
 camera.position.set(2.6, 3.4, -0.7);
@@ -574,7 +576,11 @@ window.addEventListener('mousemove', e => {
   mouse2.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(mouse2, camera);
   const hit = new THREE.Vector3();
-  if (raycaster.ray.intersectPlane(p1Plane, hit)) { p1.x = hit.x; p1.y = hit.y; clampPaddle(p1); }
+  if (raycaster.ray.intersectPlane(p1Plane, hit)) {
+    p1.x = hit.x * P1_SENS;
+    p1.y = ARENA_CY + (hit.y - ARENA_CY) * P1_SENS;
+    clampPaddle(p1);
+  }
 });
 
 // ── CPU P2 ────────────────────────────────────────────────────────────────────
@@ -659,11 +665,19 @@ function updateXRPaddles(frame) {
       const wrist = src.hand.get('wrist');
       if (wrist) {
         const pose = frame.getJointPose(wrist, rs);
-        if (pose) { p1.x = pose.transform.position.x; p1.y = pose.transform.position.y; clampPaddle(p1); }
+        if (pose) {
+          p1.x = pose.transform.position.x * P1_SENS;
+          p1.y = ARENA_CY + (pose.transform.position.y - ARENA_CY) * P1_SENS;
+          clampPaddle(p1);
+        }
       }
     } else if (src.gripSpace) {
       const pose = frame.getPose(src.gripSpace, rs);
-      if (pose) { p1.x = pose.transform.position.x; p1.y = pose.transform.position.y; clampPaddle(p1); }
+      if (pose) {
+        p1.x = pose.transform.position.x * P1_SENS;
+        p1.y = ARENA_CY + (pose.transform.position.y - ARENA_CY) * P1_SENS;
+        clampPaddle(p1);
+      }
     }
   }
 }
