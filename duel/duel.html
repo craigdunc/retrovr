@@ -326,10 +326,24 @@ const revFrac  = dr01 / totalRev;
 
 // t ∈ [0,1): first half = P1→P2, second half = P2→P1
 let discT = 0;
+let prevDiscT = 0;
 const DISC_SPEED = 0.55;  // cycles per second
 
+// Sound-trigger thresholds (fraction of the full 0→1 cycle)
+const FWD_WALL_T = 0.5 * fwdFrac;        // left-wall bounce on the forward trip
+const REV_WALL_T = 0.5 + 0.5 * revFrac;  // right-wall bounce on the return trip
+
 function updateDisc(dt) {
+  const prevT = prevDiscT;
   discT = (discT + dt * DISC_SPEED) % 1.0;
+  prevDiscT = discT;
+
+  // Detect threshold crossings and fire sounds
+  const wrapped = discT < prevT;  // t looped past 1.0 → P1 throws again
+  if (wrapped)                                                  soundThrow();
+  if (!wrapped && prevT < FWD_WALL_T  && discT >= FWD_WALL_T)  soundBounce(); // left wall
+  if (!wrapped && prevT < 0.5         && discT >= 0.5)          soundCatch();  // P2 exchange
+  if (!wrapped && prevT < REV_WALL_T  && discT >= REV_WALL_T)   soundBounce(); // right wall
 
   const half = 0.5;
   if (discT < half) {
@@ -350,6 +364,32 @@ function updateDisc(dt) {
     }
   }
 }
+
+// ── Audio ─────────────────────────────────────────────────────────────────────
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+// Resume on first pointer interaction (browser autoplay policy)
+window.addEventListener('pointerdown', () => {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}, { once: true });
+
+function blip(freq1, freq2, dur, vol, type = 'square') {
+  try {
+    if (audioCtx.state === 'suspended') return;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type = type;
+    o.frequency.setValueAtTime(freq1, audioCtx.currentTime);
+    o.frequency.linearRampToValueAtTime(freq2, audioCtx.currentTime + dur * 0.6);
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+
+const soundThrow  = () => blip(240, 560, 0.14, 0.28, 'triangle'); // rising whoosh on release
+const soundBounce = () => blip(680, 260, 0.09, 0.32, 'square');   // sharp metallic wall ping
+const soundCatch  = () => blip(200, 100, 0.13, 0.38, 'square');   // low thud on exchange
 
 // ── Floor ─────────────────────────────────────────────────────────────────────
 scene.add(new THREE.GridHelper(10, 28, 0x3a4a3a, 0x333a33));
