@@ -139,6 +139,8 @@ const PADDLE_INSET = 0.15;
 const TILT_Z_BACK  = 0.20;              // hand depth ahead of head (m) = full vertical paddle
 const TILT_Z_FRONT = 0.24;              // hand depth ahead of head (m) = full horizontal coin + laser
 const P1_SENS      = 1.8;
+const SHOOT_SPEED  = 2.4;               // m/s — matches pong3d serve speed
+const RETURN_SPEED = SHOOT_SPEED * 2;   // m/s — Thor's hammer return
 const ARENA_CY     = AY + AH * 0.5;
 
 // Bricks: 5 per side, at back of each player's half
@@ -329,6 +331,10 @@ function makeLaserRay(color) {
 }
 const laser1  = makeLaserRay(0x88bbff);
 const laser1b = makeLaserRay(0x66ddff);
+const p1LaserOrigin  = new THREE.Vector3();
+const p1LaserDir     = new THREE.Vector3();
+const p1bLaserOrigin = new THREE.Vector3();
+const p1bLaserDir    = new THREE.Vector3();
 
 // ── Bricks ────────────────────────────────────────────────────────────────────
 function makeBricks(brickZ, fillColor, edgeColor) {
@@ -486,8 +492,10 @@ const scoreP1El = document.getElementById('score-p1');
 const scoreP2El = document.getElementById('score-p2');
 
 const ball = { pos: new THREE.Vector3(0, MID_Y, AD * 0.5), vel: new THREE.Vector3() };
-const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false };
-const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false };
+let ballState   = 'idle';   // 'idle' | 'flying' | 'returning'
+let ballShooter = null;     // p1 or p1b — whichever hand fired
+const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false };
+const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false };
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
 const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
 let serving = true, servePhase = 'drop', serveTimer = 0;
@@ -531,7 +539,7 @@ function scorePoint(scorer, pts = 1) {
   if (p1Score >= WIN_SCORE || p2Score >= WIN_SCORE) {
     endGame(p1Score >= WIN_SCORE ? 1 : 0);
   } else {
-    startServe(true);
+    ballState = 'idle';
   }
 }
 
@@ -618,15 +626,15 @@ function startGame() {
   attractEl.classList.remove('visible');
   gameoverEl.classList.remove('visible');
   ball.vel.set(0, 0, 0);
-  serving = true; servePhase = 'wait'; serveTimer = 99;
+  ballState = 'idle'; serving = false;
   if (renderer.xr.isPresenting) {
     setAllPaddlesVisible(false);
     startArenaAnim(arenaRoot.position.clone(), arenaRoot.scale.x, arenaRoot.rotation.y,
                    ARENA_FULL_POS, ARENA_FULL_SCALE, ARENA_FULL_ROT_Y, () => {
-                     setAllPaddlesVisible(true); startServe();
+                     setAllPaddlesVisible(true);
                    });
   } else {
-    setAllPaddlesVisible(true); startServe();
+    setAllPaddlesVisible(true);
   }
 }
 
@@ -791,6 +799,8 @@ function updateXRPaddles(frame) {
         const rp = rayPose.transform.position, ro = rayPose.transform.orientation;
         _laserQ.set(ro.x, ro.y, ro.z, ro.w);
         _laserDir.set(0, 0, -1).applyQuaternion(_laserQ); // targetRay points along -Z
+        if (isRight) { p1LaserOrigin.set(rp.x, rp.y, rp.z); p1LaserDir.copy(_laserDir); }
+        else         { p1bLaserOrigin.set(rp.x, rp.y, rp.z); p1bLaserDir.copy(_laserDir); }
         laser.buf[0] = rp.x; laser.buf[1] = rp.y; laser.buf[2] = rp.z;
         laser.buf[3] = rp.x + _laserDir.x * 5;
         laser.buf[4] = rp.y + _laserDir.y * 5;
@@ -802,6 +812,17 @@ function updateXRPaddles(frame) {
       laser.line.visible = false;
     }
   }
+}
+
+// ── Shoot / return ────────────────────────────────────────────────────────────
+function shootBall(shooter, dir) {
+  if (ballState !== 'idle' || gameState !== 'playing') return;
+  ball.pos.set(shooter.x, shooter.y, PADDLE_INSET);
+  ball.vel.copy(dir).multiplyScalar(SHOOT_SPEED);
+  for (let i = 0; i < TRAIL; i++) trailBuf[i].set(-99, 0, 0);
+  ballState   = 'flying';
+  ballShooter = shooter;
+  soundPaddle();
 }
 
 // ── Ball physics ──────────────────────────────────────────────────────────────
@@ -856,108 +877,57 @@ function checkBrickHit(bricks, sideIdx, brickZ, velZSign) {
 }
 
 function updateBall(dt) {
-  if (serving) {
-    if (servePhase === 'wait') {
-      if ((serveTimer -= dt) <= 0) {
-        ball.pos.set(0, DROP_START_Y, AD * 0.5);
-        servePhase = 'drop'; serveTimer = DROP_DURATION;
-        for (let i = 0; i < TRAIL; i++) trailBuf[i].set(-99, 0, 0);
-      }
-    } else if (servePhase === 'drop') {
-      serveTimer -= dt;
-      const t = Math.max(0, 1 - serveTimer / DROP_DURATION);
-      const ease = t * t * (3 - 2 * t);
-      ball.pos.set(0, DROP_START_Y + (DROP_END_Y - DROP_START_Y) * ease, AD * 0.5);
-      if (serveTimer <= 0) { ball.pos.set(0, DROP_END_Y, AD * 0.5); servePhase = 'pause'; serveTimer = PAUSE_DURATION; }
-    } else {
-      if ((serveTimer -= dt) <= 0) serve();
-    }
+  // Attract / gameover: autonomous ball bounces all walls for visuals
+  if (gameState !== 'playing') {
+    ball.pos.addScaledVector(ball.vel, dt);
+    if (ball.pos.x < -AW / 2 + BALL_R) { ball.pos.x = -AW / 2 + BALL_R; ball.vel.x = Math.abs(ball.vel.x); triggerBounceRing(-AW / 2, ball.pos.y, ball.pos.z, 'x'); }
+    else if (ball.pos.x > AW / 2 - BALL_R) { ball.pos.x = AW / 2 - BALL_R; ball.vel.x = -Math.abs(ball.vel.x); triggerBounceRing(AW / 2, ball.pos.y, ball.pos.z, 'x'); }
+    if (ball.pos.y < AY + BALL_R) { ball.pos.y = AY + BALL_R; ball.vel.y = Math.abs(ball.vel.y); triggerBounceRing(ball.pos.x, AY, ball.pos.z, 'y'); }
+    else if (ball.pos.y > AY + AH - BALL_R) { ball.pos.y = AY + AH - BALL_R; ball.vel.y = -Math.abs(ball.vel.y); triggerBounceRing(ball.pos.x, AY + AH, ball.pos.z, 'y'); }
+    if (ball.vel.z < 0 && ball.pos.z < BALL_R) { ball.pos.z = BALL_R; ball.vel.z = Math.abs(ball.vel.z); triggerBounceRing(ball.pos.x, ball.pos.y, 0, 'z'); }
+    else if (ball.vel.z > 0 && ball.pos.z > AD - BALL_R) { ball.pos.z = AD - BALL_R; ball.vel.z = -Math.abs(ball.vel.z); triggerBounceRing(ball.pos.x, ball.pos.y, AD, 'z'); }
     return;
+  }
+
+  // Playing: idle = ball not in flight
+  if (ballState === 'idle') return;
+
+  // Returning: home toward shooter's paddle at RETURN_SPEED each frame
+  if (ballState === 'returning' && ballShooter) {
+    const dx = ballShooter.x - ball.pos.x;
+    const dy = ballShooter.y - ball.pos.y;
+    const dz = PADDLE_INSET  - ball.pos.z;
+    const d  = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (d < BALL_R * 3) { ballState = 'idle'; soundPaddle(); return; }
+    ball.vel.set(dx / d * RETURN_SPEED, dy / d * RETURN_SPEED, dz / d * RETURN_SPEED);
   }
 
   ball.pos.addScaledVector(ball.vel, dt);
 
-  // Side walls
-  if (ball.pos.x < -AW / 2 + BALL_R) {
-    ball.pos.x = -AW / 2 + BALL_R; ball.vel.x = Math.abs(ball.vel.x);
-    triggerBounceRing(-AW / 2, ball.pos.y, ball.pos.z, 'x');
-  } else if (ball.pos.x > AW / 2 - BALL_R) {
-    ball.pos.x = AW / 2 - BALL_R; ball.vel.x = -Math.abs(ball.vel.x);
-    triggerBounceRing(AW / 2, ball.pos.y, ball.pos.z, 'x');
-  }
-  // Top/bottom walls
-  if (ball.pos.y < AY + BALL_R) {
-    ball.pos.y = AY + BALL_R; ball.vel.y = Math.abs(ball.vel.y);
-    triggerBounceRing(ball.pos.x, AY, ball.pos.z, 'y');
-  } else if (ball.pos.y > AY + AH - BALL_R) {
-    ball.pos.y = AY + AH - BALL_R; ball.vel.y = -Math.abs(ball.vel.y);
-    triggerBounceRing(ball.pos.x, AY + AH, ball.pos.z, 'y');
-  }
+  // Side walls — always bounce
+  if (ball.pos.x < -AW / 2 + BALL_R) { ball.pos.x = -AW / 2 + BALL_R; ball.vel.x = Math.abs(ball.vel.x); triggerBounceRing(-AW / 2, ball.pos.y, ball.pos.z, 'x'); }
+  else if (ball.pos.x > AW / 2 - BALL_R) { ball.pos.x = AW / 2 - BALL_R; ball.vel.x = -Math.abs(ball.vel.x); triggerBounceRing(AW / 2, ball.pos.y, ball.pos.z, 'x'); }
+  // Top/bottom walls — always bounce
+  if (ball.pos.y < AY + BALL_R) { ball.pos.y = AY + BALL_R; ball.vel.y = Math.abs(ball.vel.y); triggerBounceRing(ball.pos.x, AY, ball.pos.z, 'y'); }
+  else if (ball.pos.y > AY + AH - BALL_R) { ball.pos.y = AY + AH - BALL_R; ball.vel.y = -Math.abs(ball.vel.y); triggerBounceRing(ball.pos.x, AY + AH, ball.pos.z, 'y'); }
 
-  // In attract / gameover: both end walls bounce, no bricks
-  if (gameState !== 'playing') {
-    if (ball.vel.z < 0 && ball.pos.z < BALL_R) {
-      ball.pos.z = BALL_R; ball.vel.z = Math.abs(ball.vel.z);
-      triggerBounceRing(ball.pos.x, ball.pos.y, 0, 'z');
-    } else if (ball.vel.z > 0 && ball.pos.z > AD - BALL_R) {
-      ball.pos.z = AD - BALL_R; ball.vel.z = -Math.abs(ball.vel.z);
+  if (ballState === 'flying') {
+    // Back wall (P2 end) → return
+    if (ball.vel.z > 0 && ball.pos.z > AD - BALL_R) {
+      ball.pos.z = AD - BALL_R;
       triggerBounceRing(ball.pos.x, ball.pos.y, AD, 'z');
+      ballState = 'returning'; soundBrick(); return;
     }
-    return;
-  }
-
-  // ── P1 end — paddle check ─────────────────────────────────────────────────
-  if (ball.vel.z < 0 && ball.pos.z < PADDLE_INSET + BALL_R) {
-    const dxa = ball.pos.x - p1.x,  dya = ball.pos.y - p1.y;
-    const dxb = ball.pos.x - p1b.x, dyb = ball.pos.y - p1b.y;
-    const hitA = !p1.deleted  && Math.sqrt(dxa*dxa + dya*dya) < PADDLE_R + BALL_R;
-    const hitB = !p1b.deleted && Math.sqrt(dxb*dxb + dyb*dyb) < PADDLE_R + BALL_R;
-    if (hitA) {
-      ball.pos.z = PADDLE_INSET + BALL_R; applyPaddleHit(p1.x,  p1.y,  +1, 0); resetCpuOff();
-    } else if (hitB) {
-      ball.pos.z = PADDLE_INSET + BALL_R; applyPaddleHit(p1b.x, p1b.y, +1, 1); resetCpuOff();
-    } else {
-      if (!missDetected[0] && ball.pos.z <= PADDLE_INSET) {
-        missDetected[0] = true;
-        miss1.group.position.set(ball.pos.x, ball.pos.y, PADDLE_INSET);
-        missFlash[0] = 1.0;
-      }
-      // Brick check — ball missed the paddle, heading toward P1's bricks
-      checkBrickHit(p1Bricks, 0, BRICK_Z1, -1);
+    // P1 back wall (ball ricocheted back past start) → return
+    if (ball.vel.z < 0 && ball.pos.z < BALL_R) {
+      ball.pos.z = BALL_R;
+      triggerBounceRing(ball.pos.x, ball.pos.y, 0, 'z');
+      ballState = 'returning'; soundBrick(); return;
     }
-  }
-
-  // P1 back wall: P2 scores a point
-  if (ball.vel.z < 0 && ball.pos.z < BALL_R) {
-    triggerBounceRing(ball.pos.x, ball.pos.y, 0, 'z');
-    scorePoint(1);
-  }
-
-  // ── P2 end — paddle check ─────────────────────────────────────────────────
-  if (ball.vel.z > 0 && ball.pos.z > AD - PADDLE_INSET - BALL_R) {
-    const dxa = ball.pos.x - p2.x,  dya = ball.pos.y - p2.y;
-    const dxb = ball.pos.x - p2b.x, dyb = ball.pos.y - p2b.y;
-    const hitA = !p2.deleted  && Math.sqrt(dxa*dxa + dya*dya) < PADDLE_R + BALL_R;
-    const hitB = !p2b.deleted && Math.sqrt(dxb*dxb + dyb*dyb) < PADDLE_R + BALL_R;
-    if (hitA) {
-      ball.pos.z = AD - PADDLE_INSET - BALL_R; applyPaddleHit(p2.x,  p2.y,  -1, 2);
-    } else if (hitB) {
-      ball.pos.z = AD - PADDLE_INSET - BALL_R; applyPaddleHit(p2b.x, p2b.y, -1, 3);
-    } else {
-      if (!missDetected[1] && ball.pos.z >= AD - PADDLE_INSET) {
-        missDetected[1] = true;
-        miss2.group.position.set(ball.pos.x, ball.pos.y, AD - PADDLE_INSET);
-        missFlash[1] = 1.0;
-      }
-      // Brick check — ball missed the paddle, heading toward P2's bricks
-      checkBrickHit(p2Bricks, 1, BRICK_Z2, +1);
-    }
-  }
-
-  // P2 back wall: P1 scores a point
-  if (ball.vel.z > 0 && ball.pos.z > AD - BALL_R) {
-    triggerBounceRing(ball.pos.x, ball.pos.y, AD, 'z');
-    scorePoint(0);
+    // P2 bricks → return after destruction
+    if (ball.vel.z > 0 && checkBrickHit(p2Bricks, 1, BRICK_Z2, +1)) { ballState = 'returning'; return; }
+    // P1 bricks (ricochet) → return
+    if (ball.vel.z < 0 && checkBrickHit(p1Bricks, 0, BRICK_Z1, -1)) { ballState = 'returning'; return; }
   }
 }
 
@@ -997,7 +967,15 @@ const clock = new THREE.Clock();
 renderer.setAnimationLoop((time, frame) => {
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  if (frame) updateXRPaddles(frame);
+  if (frame) {
+    updateXRPaddles(frame);
+    if (gameState === 'playing') {
+      if (p1.laserOn  && !p1.wasLaserOn)  shootBall(p1,  p1LaserDir);
+      if (p1b.laserOn && !p1b.wasLaserOn) shootBall(p1b, p1bLaserDir);
+    }
+    p1.wasLaserOn  = p1.laserOn;
+    p1b.wasLaserOn = p1b.laserOn;
+  }
 
   // Lerp P1 paddles toward targets (respects lerpSpeed penalty from brick hits)
   if (!p1.deleted) {
@@ -1042,9 +1020,14 @@ renderer.setAnimationLoop((time, frame) => {
   for (const r of bounceRings) {
     if (r.flash > 0) { r.flash = Math.max(0, r.flash - dt / 0.4); r.fillMat.opacity = r.flash * 0.18; r.rimMat.opacity = r.flash * 0.7; }
   }
-  pushTrail(ball.pos);
-
-  ballMesh.position.copy(ball.pos);
+  const ballActive = gameState !== 'playing' || ballState !== 'idle';
+  ballMesh.visible = ballActive;
+  if (ballActive) {
+    pushTrail(ball.pos);
+    ballMesh.position.copy(ball.pos);
+  } else {
+    for (let i = 0; i < TRAIL; i++) trailMeshes[i].position.set(-99, 0, 0);
+  }
   // Group origin is at bottom edge — rotation and scale both pivot from there
   paddle1.position.set(p1.x,   p1.y   - PADDLE_R, PADDLE_INSET);  paddle1.rotation.set(p1.tilt,  0, 0);  paddle1.scale.setScalar(p1.scale);
   paddle1b.position.set(p1b.x, p1b.y  - PADDLE_R, PADDLE_INSET);  paddle1b.rotation.set(p1b.tilt, 0, 0);  paddle1b.scale.setScalar(p1b.scale);
