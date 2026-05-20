@@ -492,8 +492,9 @@ const scoreP1El = document.getElementById('score-p1');
 const scoreP2El = document.getElementById('score-p2');
 
 const ball = { pos: new THREE.Vector3(0, MID_Y, AD * 0.5), vel: new THREE.Vector3() };
-let ballState   = 'idle';   // 'idle' | 'flying' | 'returning'
-let ballShooter = null;     // p1 or p1b — whichever hand fired
+let ballState         = 'idle';   // 'idle' | 'flying' | 'returning'
+let ballShooter       = null;     // p1 or p1b — whichever hand fired
+let ballShooterPaddle = null;     // paddle1 or paddle1b — hidden while ball is in flight
 const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false };
 const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false };
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
@@ -540,6 +541,7 @@ function scorePoint(scorer, pts = 1) {
     endGame(p1Score >= WIN_SCORE ? 1 : 0);
   } else {
     ballState = 'idle';
+    if (ballShooterPaddle) { ballShooterPaddle.visible = true; ballShooterPaddle = null; }
   }
 }
 
@@ -820,8 +822,10 @@ function shootBall(shooter, dir) {
   ball.pos.set(shooter.x, shooter.y, PADDLE_INSET);
   ball.vel.copy(dir).multiplyScalar(SHOOT_SPEED);
   for (let i = 0; i < TRAIL; i++) trailBuf[i].set(-99, 0, 0);
-  ballState   = 'flying';
-  ballShooter = shooter;
+  ballState         = 'flying';
+  ballShooter       = shooter;
+  ballShooterPaddle = shooter === p1 ? paddle1 : paddle1b;
+  ballShooterPaddle.visible = false;
   soundPaddle();
 }
 
@@ -898,7 +902,11 @@ function updateBall(dt) {
     const dy = ballShooter.y - ball.pos.y;
     const dz = PADDLE_INSET  - ball.pos.z;
     const d  = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (d < BALL_R * 3) { ballState = 'idle'; soundPaddle(); return; }
+    if (d < BALL_R * 3) {
+      ballState = 'idle';
+      if (ballShooterPaddle) { ballShooterPaddle.visible = true; ballShooterPaddle = null; }
+      soundPaddle(); return;
+    }
     ball.vel.set(dx / d * RETURN_SPEED, dy / d * RETURN_SPEED, dz / d * RETURN_SPEED);
   }
 
