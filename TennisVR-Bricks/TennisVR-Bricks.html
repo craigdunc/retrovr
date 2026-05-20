@@ -300,47 +300,62 @@ const paddleFlash = [0, 0, 0, 0];
 function makeBricks(brickZ, fillColor, edgeColor) {
   const groupW = BRICK_W * BRICK_COUNT;
   return Array.from({ length: BRICK_COUNT }, (_, i) => {
-    const localX = -groupW / 2 + BRICK_W / 2 + BRICK_W * i;
-    const geo  = new THREE.BoxGeometry(BRICK_W, BRICK_H, BRICK_D);
-    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.18 }));
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: edgeColor }));
+    const localX  = -groupW / 2 + BRICK_W / 2 + BRICK_W * i;
+    const geo     = new THREE.BoxGeometry(BRICK_W, BRICK_H, BRICK_D);
+    const fillMat = new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.18 });
+    const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor });
+    const mesh  = new THREE.Mesh(geo, fillMat);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
     mesh.position.set(localX, BRICK_Y, brickZ);
     edges.position.set(localX, BRICK_Y, brickZ);
     arenaRoot.add(mesh, edges);
-    return { localX, x: localX, y: BRICK_Y, mesh, edges, alive: true };
+    return { localX, x: localX, y: BRICK_Y, mesh, edges, fillMat, edgeMat, alive: true, state: 'normal' };
   });
 }
 
-const p1Bricks = makeBricks(BRICK_Z1, 0x2255bb, 0x44aaff); // blue fill, bright blue edges
-const p2Bricks = makeBricks(BRICK_Z2, 0xbb2233, 0xff4466); // red fill, bright red edges
+const p1Bricks = makeBricks(BRICK_Z1, 0x2255bb, 0x44aaff);
+const p2Bricks = makeBricks(BRICK_Z2, 0xbb2233, 0xff4466);
+// Brick 2 (centre) is the life brick — starts white
+p1Bricks[2].state = 'white';
+p1Bricks[2].fillMat.color.setHex(0xffffff);
+p1Bricks[2].edgeMat.color.setHex(0xffffff);
+
 let brickCounts = [BRICK_COUNT, BRICK_COUNT];
-let brickGroupX = 0;
+const brickGroupX = [0, 0];
 
 function resetBricks() {
   brickCounts[0] = brickCounts[1] = BRICK_COUNT;
-  for (const b of p1Bricks) { b.alive = true; b.mesh.visible = true; b.edges.visible = true; }
-  for (const b of p2Bricks) { b.alive = true; b.mesh.visible = true; b.edges.visible = true; }
-  updateBrickGroupX(0);
+  for (let i = 0; i < BRICK_COUNT; i++) {
+    const b1 = p1Bricks[i];
+    b1.alive = true; b1.mesh.visible = true; b1.edges.visible = true;
+    if (i === 2) {
+      b1.state = 'white'; b1.fillMat.color.setHex(0xffffff); b1.edgeMat.color.setHex(0xffffff);
+    }
+    const b2 = p2Bricks[i];
+    b2.alive = true; b2.mesh.visible = true; b2.edges.visible = true;
+  }
+  updateBrickGroupX(0, 0);
+  updateBrickGroupX(1, 0);
 }
 
-function updateBrickGroupX(targetX) {
+function updateBrickGroupX(side, targetX) {
+  const bricks = side === 0 ? p1Bricks : p2Bricks;
   let leftIdx = BRICK_COUNT, rightIdx = -1;
   for (let i = 0; i < BRICK_COUNT; i++) {
-    if (p1Bricks[i].alive || p2Bricks[i].alive) {
+    if (bricks[i].alive) {
       if (i < leftIdx) leftIdx = i;
       if (i > rightIdx) rightIdx = i;
     }
   }
-  if (rightIdx < 0) { brickGroupX = targetX; return; }
-  const leftLocalX  = p1Bricks[leftIdx].localX;
-  const rightLocalX = p1Bricks[rightIdx].localX;
+  if (rightIdx < 0) { brickGroupX[side] = targetX; return; }
+  const leftLocalX  = bricks[leftIdx].localX;
+  const rightLocalX = bricks[rightIdx].localX;
   const minX = -AW / 2 - leftLocalX  + BRICK_W / 2;
   const maxX =  AW / 2 - rightLocalX - BRICK_W / 2;
-  brickGroupX = Math.max(minX, Math.min(maxX, targetX));
+  brickGroupX[side] = Math.max(minX, Math.min(maxX, targetX));
   for (let i = 0; i < BRICK_COUNT; i++) {
-    const wx = brickGroupX + p1Bricks[i].localX;
-    p1Bricks[i].x = wx; p1Bricks[i].mesh.position.x = wx; p1Bricks[i].edges.position.x = wx;
-    p2Bricks[i].x = wx; p2Bricks[i].mesh.position.x = wx; p2Bricks[i].edges.position.x = wx;
+    const wx = brickGroupX[side] + bricks[i].localX;
+    bricks[i].x = wx; bricks[i].mesh.position.x = wx; bricks[i].edges.position.x = wx;
   }
   updateVRBricks();
 }
@@ -434,11 +449,15 @@ function triggerBounceRing(x, y, z, axis) {
 }
 
 // ── Game state ────────────────────────────────────────────────────────────────
-const ball = { pos: new THREE.Vector3(0, AY + AH * 0.55, AD * 0.5), vel: new THREE.Vector3() };
-const p1  = { x: 0, y: AY + AH * 0.55 };
-const p1b = { x: 0, y: AY + AH * 0.55 };
-const p2  = { x: 0, y: AY + AH * 0.55 };
-const p2b = { x: 0, y: AY + AH * 0.55 };
+const PADDLE_LERP_FAST = 80;   // effectively instant (clamped to 1 at 60 fps)
+const PADDLE_LERP_SLOW = 4;    // ~6% per frame — noticeable drag
+const MID_Y = AY + AH * 0.55;
+
+const ball = { pos: new THREE.Vector3(0, MID_Y, AD * 0.5), vel: new THREE.Vector3() };
+const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false };
+const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false };
+const p2  = { x: 0, y: MID_Y };
+const p2b = { x: 0, y: MID_Y };
 let serving = true, servePhase = 'drop', serveTimer = 0;
 
 const attractEl   = document.getElementById('attract');
@@ -454,7 +473,15 @@ const DROP_START_Y = AY + AH, DROP_END_Y = AY + AH * 0.55;
 const DROP_DURATION = 1.1, PAUSE_DURATION = 0.35;
 
 function setAllPaddlesVisible(v) {
-  paddle1.visible = v; paddle1b.visible = v; paddle2.visible = v; paddle2b.visible = v;
+  paddle1.visible  = v && !p1.deleted;
+  paddle1b.visible = v && !p1b.deleted;
+  paddle2.visible  = v;
+  paddle2b.visible = v;
+}
+
+function resetPaddles() {
+  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST;
+  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST;
 }
 
 function startServe(afterPoint = false) {
@@ -525,6 +552,7 @@ function endGame(loserIdx) {
 
 function startGame() {
   gameState = 'playing';
+  resetPaddles();
   resetBricks();
   updateVRBricks();
   vrLogoMesh.visible = false; vrStartMesh.visible = false;
@@ -586,16 +614,16 @@ window.addEventListener('mousemove', e => {
   raycaster.setFromCamera(mouse2, camera);
   const hit = new THREE.Vector3();
   if (raycaster.ray.intersectPlane(p1Plane, hit)) {
-    p1.x = hit.x * P1_SENS;
-    p1.y = ARENA_CY + (hit.y - ARENA_CY) * P1_SENS;
-    clampPaddle(p1);
-    p1b.x = p1.x; p1b.y = p1.y;
+    p1.targetX = hit.x * P1_SENS;
+    p1.targetY = ARENA_CY + (hit.y - ARENA_CY) * P1_SENS;
+    p1b.targetX = p1.targetX; p1b.targetY = p1.targetY;
   }
 });
 
 // ── CPU P2 ────────────────────────────────────────────────────────────────────
 const CPU_SPEED = 1.5;
 const CPU_ERROR = 0.040;
+const DEFENSIVE_SPREAD = AW * 0.18;
 let cpuOff = { x: 0, y: 0 }, cpuOff2 = { x: 0, y: 0 };
 
 function resetCpuOff() {
@@ -606,15 +634,26 @@ function resetCpuOff() {
 }
 resetCpuOff();
 
+function cpuMoveToward(paddle, tx, ty, dt) {
+  const dx = tx - paddle.x, dy = ty - paddle.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d > 0.001) { paddle.x += dx / d * Math.min(d, CPU_SPEED * dt); paddle.y += dy / d * Math.min(d, CPU_SPEED * dt); }
+}
+
 function updateCpu(dt) {
-  const t2x = ball.pos.x + cpuOff.x, t2y = ball.pos.y + cpuOff.y;
-  const d2 = Math.sqrt((t2x - p2.x) ** 2 + (t2y - p2.y) ** 2);
-  if (d2 > 0.001) { p2.x += (t2x - p2.x) / d2 * Math.min(d2, CPU_SPEED * dt); p2.y += (t2y - p2.y) / d2 * Math.min(d2, CPU_SPEED * dt); }
-  clampPaddle(p2);
-  const t2bx = ball.pos.x + cpuOff2.x, t2by = ball.pos.y + cpuOff2.y;
-  const d2b = Math.sqrt((t2bx - p2b.x) ** 2 + (t2by - p2b.y) ** 2);
-  if (d2b > 0.001) { p2b.x += (t2bx - p2b.x) / d2b * Math.min(d2b, CPU_SPEED * dt); p2b.y += (t2by - p2b.y) / d2b * Math.min(d2b, CPU_SPEED * dt); }
-  clampPaddle(p2b);
+  if (ball.vel.z <= 0) {
+    // Ball moving away — spread to defensive positions
+    const midY = AY + AH * 0.5;
+    cpuMoveToward(p2,   DEFENSIVE_SPREAD, midY, dt);   // right hand: centre-right
+    cpuMoveToward(p2b, -DEFENSIVE_SPREAD, midY, dt);   // left hand:  centre-left
+  } else {
+    // Ball incoming — both hands converge on ball
+    cpuMoveToward(p2,  ball.pos.x + cpuOff.x,  ball.pos.y + cpuOff.y,  dt);
+    cpuMoveToward(p2b, ball.pos.x + cpuOff2.x, ball.pos.y + cpuOff2.y, dt);
+  }
+  clampPaddle(p2); clampPaddle(p2b);
+  // Simulated head = midpoint of hands → drives P2 brick group
+  updateBrickGroupX(1, (p2.x + p2b.x) / 2);
 }
 
 // ── WebXR ─────────────────────────────────────────────────────────────────────
@@ -672,39 +711,58 @@ function updateXRPaddles(frame) {
     }
     if (wx === undefined) continue;
     const target = isRight ? p1 : p1b;
-    target.x = wx * P1_SENS;
-    target.y = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
-    clampPaddle(target);
+    target.targetX = wx * P1_SENS;
+    target.targetY = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
   }
 }
 
 // ── Ball physics ──────────────────────────────────────────────────────────────
+function applyP1BrickEffect(idx) {
+  if      (idx === 0) { p1b.deleted = true;  paddle1b.visible = false; }
+  else if (idx === 1) { p1b.lerpSpeed = PADDLE_LERP_SLOW; }
+  else if (idx === 3) { p1.lerpSpeed  = PADDLE_LERP_SLOW; }
+  else if (idx === 4) { p1.deleted  = true;  paddle1.visible  = false; }
+}
+
 function checkBrickHit(bricks, sideIdx, brickZ, velZSign) {
-  // velZSign: -1 means ball moving toward P1 (z decreasing), +1 toward P2
   const front = brickZ + (BRICK_D / 2 + BALL_R) * (-velZSign);
   const back  = brickZ + (BRICK_D / 2 + BALL_R) * ( velZSign);
-  // Only check when ball is within the brick slab in Z
   const inRange = velZSign < 0
     ? (ball.pos.z <= front && ball.pos.z >= back)
     : (ball.pos.z >= front && ball.pos.z <= back);
   if (!inRange) return false;
 
-  for (const brick of bricks) {
+  for (let i = 0; i < bricks.length; i++) {
+    const brick = bricks[i];
     if (!brick.alive) continue;
     if (Math.abs(ball.pos.x - brick.x) < BRICK_W / 2 + BALL_R &&
         Math.abs(ball.pos.y - brick.y) < BRICK_H / 2 + BALL_R) {
-      brick.alive = false;
-      brick.mesh.visible = false;
-      brick.edges.visible = false;
-      // Push ball just outside brick front face and reverse Z
       ball.pos.z = front;
       ball.vel.z = -ball.vel.z;
-      brickCounts[sideIdx]--;
       wallFlash[sideIdx] = 1.0;
-      updateVRBricks();
       soundBrick();
       triggerBounceRing(brick.x, brick.y, brickZ, 'z');
-      if (brickCounts[sideIdx] <= 0) endGame(sideIdx);
+
+      if (sideIdx === 0 && i === 2) {
+        // Life brick: white → blue (survives); blue → P1 loses
+        if (brick.state === 'white') {
+          brick.state = 'blue';
+          brick.fillMat.color.setHex(0x2255bb);
+          brick.edgeMat.color.setHex(0x44aaff);
+          updateVRBricks();
+        } else {
+          brick.alive = false; brick.mesh.visible = false; brick.edges.visible = false;
+          brickCounts[0]--;
+          updateVRBricks();
+          endGame(0);
+        }
+      } else {
+        brick.alive = false; brick.mesh.visible = false; brick.edges.visible = false;
+        brickCounts[sideIdx]--;
+        updateVRBricks();
+        if (sideIdx === 0) applyP1BrickEffect(i);
+        if (brickCounts[sideIdx] <= 0) endGame(sideIdx);
+      }
       return true;
     }
   }
@@ -766,8 +824,8 @@ function updateBall(dt) {
   if (ball.vel.z < 0 && ball.pos.z < PADDLE_INSET + BALL_R) {
     const dxa = ball.pos.x - p1.x,  dya = ball.pos.y - p1.y;
     const dxb = ball.pos.x - p1b.x, dyb = ball.pos.y - p1b.y;
-    const hitA = Math.sqrt(dxa*dxa + dya*dya) < PADDLE_R + BALL_R;
-    const hitB = Math.sqrt(dxb*dxb + dyb*dyb) < PADDLE_R + BALL_R;
+    const hitA = !p1.deleted  && Math.sqrt(dxa*dxa + dya*dya) < PADDLE_R + BALL_R;
+    const hitB = !p1b.deleted && Math.sqrt(dxb*dxb + dyb*dyb) < PADDLE_R + BALL_R;
     if (hitA) {
       ball.pos.z = PADDLE_INSET + BALL_R; applyPaddleHit(p1.x,  p1.y,  +1, 0); resetCpuOff();
     } else if (hitB) {
@@ -854,11 +912,25 @@ renderer.setAnimationLoop((time, frame) => {
   const dt = Math.min(clock.getDelta(), 0.05);
 
   if (frame) updateXRPaddles(frame);
-  updateCpu(dt);
+
+  // Lerp P1 paddles toward targets (respects lerpSpeed penalty from brick hits)
+  if (!p1.deleted) {
+    const ls = Math.min(p1.lerpSpeed * dt, 1);
+    p1.x += (p1.targetX - p1.x) * ls; p1.y += (p1.targetY - p1.y) * ls;
+    clampPaddle(p1);
+  }
+  if (!p1b.deleted) {
+    const ls = Math.min(p1b.lerpSpeed * dt, 1);
+    p1b.x += (p1b.targetX - p1b.x) * ls; p1b.y += (p1b.targetY - p1b.y) * ls;
+    clampPaddle(p1b);
+  }
+
+  updateCpu(dt);   // also calls updateBrickGroupX(1, p2HeadX)
   updateBall(dt);
 
+  // P1 brick group tracks human head
   const headX = renderer.xr.isPresenting ? renderer.xr.getCamera().position.x : camera.position.x;
-  updateBrickGroupX(headX);
+  updateBrickGroupX(0, headX);
 
   if (vrStartMesh.visible) vrStartMat.opacity = (time % 1200 < 600) ? 1.0 : 0.0;
 
