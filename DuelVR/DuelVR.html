@@ -321,6 +321,9 @@ function makePaddle(faceColor, rimColor) {
 }
 const { group: paddle1,  faceMat: p1FaceMat  } = makePaddle(0x3377dd, 0x88bbff);
 const { group: paddle1b, faceMat: p1bFaceMat } = makePaddle(0x22aacc, 0x66ddff);
+const _whiteColor  = new THREE.Color(0xffffff);
+const _p1BaseColor = new THREE.Color(0x3377dd);
+const _p1bBaseColor = new THREE.Color(0x22aacc);
 const { group: paddle2,  faceMat: p2FaceMat  } = makePaddle(0xdd3355, 0xff88aa);
 const { group: paddle2b, faceMat: p2bFaceMat } = makePaddle(0xdd7722, 0xffbb66);
 arenaRoot.add(paddle1, paddle1b, paddle2, paddle2b);
@@ -503,8 +506,8 @@ const scoreP2El = document.getElementById('score-p2');
 
 // balls[0]=p1-right  balls[1]=p1b-left  balls[2]=p2-right  balls[3]=p2b-left
 const balls = Array.from({ length: 4 }, makeBallObject);
-const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false };
-const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false };
+const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
+const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
 const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
 let serving = true, servePhase = 'drop', serveTimer = 0;
@@ -529,8 +532,8 @@ function setAllPaddlesVisible(v) {
 }
 
 function resetPaddles() {
-  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false;
-  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false;
+  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.brightness  = 0; p1.targetBrightness  = 0;
+  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.brightness = 0; p1b.targetBrightness = 0;
   p2.deleted  = false; p2.speedMult  = 1.0;
   p2b.deleted = false; p2b.speedMult = 1.0;
 }
@@ -796,9 +799,10 @@ function updateXRPaddles(frame) {
     const target = isRight ? p1 : p1b;
     target.targetX     = wx * P1_SENS;
     target.targetY     = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
-    target.targetTilt  = t * Math.PI / 2;
-    target.targetScale = THREE.MathUtils.lerp(1.0, COIN_R / PADDLE_R, t);
-    target.laserOn     = t >= 1;
+    target.targetTilt       = t * Math.PI / 2;
+    target.targetScale      = THREE.MathUtils.lerp(1.0, COIN_R / PADDLE_R, t);
+    target.targetBrightness = t;
+    target.laserOn          = t >= 1;
 
     // Update targetRay laser — follows pointing direction of hand/controller
     const laser = isRight ? laser1 : laser1b;
@@ -1001,12 +1005,18 @@ renderer.setAnimationLoop((time, frame) => {
     p1b.x += (p1b.targetX - p1b.x) * ls; p1b.y += (p1b.targetY - p1b.y) * ls;
     clampPaddle(p1b);
   }
-  // Smooth tilt and scale toward targets
+  // Smooth tilt, scale, and brightness toward targets
   const ts = Math.min(12 * dt, 1);
   p1.tilt   += (p1.targetTilt   - p1.tilt)   * ts;
   p1b.tilt  += (p1b.targetTilt  - p1b.tilt)  * ts;
   p1.scale  += (p1.targetScale  - p1.scale)  * ts;
   p1b.scale += (p1b.targetScale - p1b.scale) * ts;
+  p1.brightness  += (p1.targetBrightness  - p1.brightness)  * ts;
+  p1b.brightness += (p1b.targetBrightness - p1b.brightness) * ts;
+  p1FaceMat.color.lerpColors(_p1BaseColor,  _whiteColor, p1.brightness);
+  p1bFaceMat.color.lerpColors(_p1bBaseColor, _whiteColor, p1b.brightness);
+  p1FaceMat.opacity  = 0.35 + p1.brightness  * 0.55;
+  p1bFaceMat.opacity = 0.35 + p1b.brightness * 0.55;
 
   updateCpu(dt);   // also calls updateBrickGroupX(1, p2HeadX)
   updateBall(dt);
