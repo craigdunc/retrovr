@@ -848,14 +848,21 @@ function captureCalibFrame(type, frame) {
   if (!frame || !xrSession) return;
   const rs = renderer.xr.getReferenceSpace(); if (!rs) return;
   for (const src of xrSession.inputSources) {
-    if (!src.hand) continue;
-    const wrist = src.hand.get('wrist'); if (!wrist) continue;
-    const pose = frame.getJointPose(wrist, rs); if (!pose) continue;
-    const o = pose.transform.orientation;
-    const q = { x: +o.x.toFixed(2), y: +o.y.toFixed(2), z: +o.z.toFixed(2), w: +o.w.toFixed(2) };
-    if (type === 'vert')  { if (src.handedness === 'right') calibVertR  = q; else calibVertL  = q; }
-    else                  { if (src.handedness === 'right') calibHorizR = q; else calibHorizL = q; }
+    const isRight = src.handedness === 'right', isLeft = src.handedness === 'left';
+    if (!isRight && !isLeft) continue;
+    let ori = null;
+    if (src.hand) {
+      const wrist = src.hand.get('wrist');
+      if (wrist) { const p = frame.getJointPose(wrist, rs); if (p) ori = p.transform.orientation; }
+    } else if (src.gripSpace) {
+      const p = frame.getPose(src.gripSpace, rs); if (p) ori = p.transform.orientation;
+    }
+    if (!ori) continue;
+    const q = { x: +ori.x.toFixed(2), y: +ori.y.toFixed(2), z: +ori.z.toFixed(2), w: +ori.w.toFixed(2) };
+    if (type === 'vert')  { if (isRight) calibVertR  = q; else calibVertL  = q; }
+    else                  { if (isRight) calibHorizR = q; else calibHorizL = q; }
   }
+  drawCalib();
 }
 
 function updateCalib(dt, frame) {
