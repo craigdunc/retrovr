@@ -298,8 +298,13 @@ function pushTrail(pos) {
 function makePaddle(faceColor, rimColor) {
   const g = new THREE.Group();
   const faceMat = new THREE.MeshBasicMaterial({ color: faceColor, transparent: true, opacity: 0.35, side: THREE.DoubleSide });
-  g.add(new THREE.Mesh(new THREE.CircleGeometry(PADDLE_R, 40), faceMat));
-  g.add(new THREE.Mesh(new THREE.TorusGeometry(PADDLE_R, 0.005, 8, 40), new THREE.MeshBasicMaterial({ color: rimColor })));
+  const face = new THREE.Mesh(new THREE.CircleGeometry(PADDLE_R, 40), faceMat);
+  const rim  = new THREE.Mesh(new THREE.TorusGeometry(PADDLE_R, 0.005, 8, 40), new THREE.MeshBasicMaterial({ color: rimColor }));
+  // Offset meshes up by PADDLE_R so the group origin sits at the bottom edge.
+  // rotation.x and scale then both pivot/shrink around that bottom point.
+  face.position.y = PADDLE_R;
+  rim.position.y  = PADDLE_R;
+  g.add(face, rim);
   return { group: g, faceMat };
 }
 const { group: paddle1,  faceMat: p1FaceMat  } = makePaddle(0x3377dd, 0x88bbff);
@@ -1037,9 +1042,9 @@ renderer.setAnimationLoop((time, frame) => {
   pushTrail(ball.pos);
 
   ballMesh.position.copy(ball.pos);
-  // Pivot at bottom edge: centre drops and moves forward as tilt increases
-  paddle1.position.set(p1.x,   p1.y   - PADDLE_R*(1-Math.cos(p1.tilt)),  PADDLE_INSET + PADDLE_R*Math.sin(p1.tilt));  paddle1.rotation.set(p1.tilt,  0, 0);  paddle1.scale.setScalar(p1.scale);
-  paddle1b.position.set(p1b.x, p1b.y  - PADDLE_R*(1-Math.cos(p1b.tilt)), PADDLE_INSET + PADDLE_R*Math.sin(p1b.tilt)); paddle1b.rotation.set(p1b.tilt, 0, 0);  paddle1b.scale.setScalar(p1b.scale);
+  // Group origin is at bottom edge — rotation and scale both pivot from there
+  paddle1.position.set(p1.x,   p1.y   - PADDLE_R, PADDLE_INSET);  paddle1.rotation.set(p1.tilt,  0, 0);  paddle1.scale.setScalar(p1.scale);
+  paddle1b.position.set(p1b.x, p1b.y  - PADDLE_R, PADDLE_INSET);  paddle1b.rotation.set(p1b.tilt, 0, 0);  paddle1b.scale.setScalar(p1b.scale);
   paddle2.position.set(p2.x,   p2.y,   AD - PADDLE_INSET);  paddle2.rotation.set(0, Math.PI, 0);
   paddle2b.position.set(p2b.x, p2b.y,  AD - PADDLE_INSET);  paddle2b.rotation.set(0, Math.PI, 0);
   // Laser visibility is managed inside updateXRPaddles; hide both outside VR
