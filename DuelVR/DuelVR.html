@@ -136,8 +136,8 @@ const BALL_R       = 0.024;
 const PADDLE_R     = 0.080;
 const COIN_R       = 0.022;   // tiny coin-puck radius when hand is past front plane
 const PADDLE_INSET = 0.15;
-const TILT_Z_BACK  = 0.30;   // hand depth ahead of head (m) = full vertical paddle
-const TILT_Z_FRONT = 0.60;   // 30cm further forward = full horizontal coin + laser
+const TILT_Z_BACK  = 0.30;              // hand depth ahead of head (m) = full vertical paddle
+const TILT_Z_FRONT = TILT_Z_BACK + PADDLE_INSET; // same distance again = full horizontal coin + laser
 const P1_SENS      = 1.8;
 const ARENA_CY     = AY + AH * 0.5;
 
@@ -309,17 +309,21 @@ const { group: paddle2b, faceMat: p2bFaceMat } = makePaddle(0xdd7722, 0xffbb66);
 arenaRoot.add(paddle1, paddle1b, paddle2, paddle2b);
 const paddleFlash = [0, 0, 0, 0];
 
-// ── Laser pointers (visible when hand is past the front tilt plane) ───────────
-function makeLaser(color) {
-  const pts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, AD - PADDLE_INSET)];
-  const mat  = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.75, depthWrite: false });
-  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+// ── Laser pointers (targetRay-based, world space, visible past front tilt plane) ─
+const _laserQ   = new THREE.Quaternion();
+const _laserDir = new THREE.Vector3();
+function makeLaserRay(color) {
+  const buf  = new Float32Array(6); // start (xyz) + end (xyz)
+  const geo  = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(buf, 3));
+  const mat  = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false });
+  const line = new THREE.Line(geo, mat);
   line.visible = false;
-  arenaRoot.add(line);
-  return line;
+  scene.add(line);
+  return { line, buf };
 }
-const laser1  = makeLaser(0x88bbff);
-const laser1b = makeLaser(0x66ddff);
+const laser1  = makeLaserRay(0x88bbff);
+const laser1b = makeLaserRay(0x66ddff);
 
 // ── Bricks ────────────────────────────────────────────────────────────────────
 function makeBricks(brickZ, fillColor, edgeColor) {
@@ -770,6 +774,25 @@ function updateXRPaddles(frame) {
     target.targetTilt  = t * Math.PI / 2;
     target.targetScale = THREE.MathUtils.lerp(1.0, COIN_R / PADDLE_R, t);
     target.laserOn     = t >= 1;
+
+    // Update targetRay laser — follows pointing direction of hand/controller
+    const laser = isRight ? laser1 : laser1b;
+    if (target.laserOn && src.targetRaySpace) {
+      const rayPose = frame.getPose(src.targetRaySpace, rs);
+      if (rayPose) {
+        const rp = rayPose.transform.position, ro = rayPose.transform.orientation;
+        _laserQ.set(ro.x, ro.y, ro.z, ro.w);
+        _laserDir.set(0, 0, -1).applyQuaternion(_laserQ); // targetRay points along -Z
+        laser.buf[0] = rp.x; laser.buf[1] = rp.y; laser.buf[2] = rp.z;
+        laser.buf[3] = rp.x + _laserDir.x * 5;
+        laser.buf[4] = rp.y + _laserDir.y * 5;
+        laser.buf[5] = rp.z + _laserDir.z * 5;
+        laser.line.geometry.attributes.position.needsUpdate = true;
+        laser.line.visible = true;
+      }
+    } else {
+      laser.line.visible = false;
+    }
   }
 }
 
@@ -1018,11 +1041,8 @@ renderer.setAnimationLoop((time, frame) => {
   paddle1b.position.set(p1b.x, p1b.y,  PADDLE_INSET);  paddle1b.rotation.set(p1b.tilt,  0, 0);  paddle1b.scale.setScalar(p1b.scale);
   paddle2.position.set(p2.x,   p2.y,   AD - PADDLE_INSET);  paddle2.rotation.set(0, Math.PI, 0);
   paddle2b.position.set(p2b.x, p2b.y,  AD - PADDLE_INSET);  paddle2b.rotation.set(0, Math.PI, 0);
-  // Laser pointers: shown when hand is past the front tilt plane
-  const showL1  = renderer.xr.isPresenting && p1.laserOn  && !p1.deleted;
-  const showL1b = renderer.xr.isPresenting && p1b.laserOn && !p1b.deleted;
-  laser1.visible  = showL1;   if (showL1)  laser1.position.set(p1.x,   p1.y,   PADDLE_INSET);
-  laser1b.visible = showL1b;  if (showL1b) laser1b.position.set(p1b.x, p1b.y,  PADDLE_INSET);
+  // Laser visibility is managed inside updateXRPaddles; hide both outside VR
+  if (!renderer.xr.isPresenting) { laser1.line.visible = false; laser1b.line.visible = false; }
 
   if (vrScoreMesh.visible) {
     vrScoreMesh.position.y += (vrScoreTargetY - vrScoreMesh.position.y) * Math.min(dt * 2.5, 1);
