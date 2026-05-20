@@ -462,8 +462,8 @@ const scoreP1El = document.getElementById('score-p1');
 const scoreP2El = document.getElementById('score-p2');
 
 const ball = { pos: new THREE.Vector3(0, MID_Y, AD * 0.5), vel: new THREE.Vector3() };
-const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false };
-const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false };
+const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0 };
+const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0 };
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
 const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
 let serving = true, servePhase = 'drop', serveTimer = 0;
@@ -727,6 +727,28 @@ const grip1 = renderer.xr.getControllerGrip(0);
 const grip2 = renderer.xr.getControllerGrip(1);
 scene.add(grip1, grip2);
 
+const _xrV = new THREE.Vector3();
+const _xrQ = new THREE.Quaternion();
+
+function poseToTilt(ori, axis) {
+  // axis: vector in local space whose world-Y tells us tilt amount
+  _xrQ.set(ori.x, ori.y, ori.z, ori.w);
+  _xrV.copy(axis).applyQuaternion(_xrQ);
+  // clamp to [0, π/2]: no past-vertical, no past-horizontal
+  return THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(_xrV.y, -1, 1)), 0, Math.PI / 2);
+}
+
+// Hand tracking: +Z of wrist joint = back-of-hand (per WebXR Hand Input spec)
+// Back-of-hand pointing up (+Y world) → palm facing down → horizontal paddle
+const HAND_TILT_AXIS = new THREE.Vector3(0, 0, 1);
+
+// Controller: +Y of grip space = top of controller
+// Top pointing forward (+Z world) = pitched forward → horizontal paddle
+// We measure how much top has moved toward +Z, so use Z component of local +Y → use a vector
+// that maps tilt-forward motion to positive Y in world. Grip pitches forward: local +X goes
+// toward +Y world, so measure local +X dot world +Y:
+const CTRL_TILT_AXIS = new THREE.Vector3(1, 0, 0);
+
 function updateXRPaddles(frame) {
   if (!xrSession || !frame) return;
   const rs = renderer.xr.getReferenceSpace();
@@ -734,18 +756,28 @@ function updateXRPaddles(frame) {
   for (const src of xrSession.inputSources) {
     const isRight = src.handedness === 'right', isLeft = src.handedness === 'left';
     if (!isRight && !isLeft) continue;
-    let wx, wy;
+    let wx, wy, tilt = 0;
     if (src.hand) {
       const wrist = src.hand.get('wrist');
-      if (wrist) { const pose = frame.getJointPose(wrist, rs); if (pose) { wx = pose.transform.position.x; wy = pose.transform.position.y; } }
+      if (wrist) {
+        const pose = frame.getJointPose(wrist, rs);
+        if (pose) {
+          wx = pose.transform.position.x; wy = pose.transform.position.y;
+          tilt = poseToTilt(pose.transform.orientation, HAND_TILT_AXIS);
+        }
+      }
     } else if (src.gripSpace) {
       const pose = frame.getPose(src.gripSpace, rs);
-      if (pose) { wx = pose.transform.position.x; wy = pose.transform.position.y; }
+      if (pose) {
+        wx = pose.transform.position.x; wy = pose.transform.position.y;
+        tilt = poseToTilt(pose.transform.orientation, CTRL_TILT_AXIS);
+      }
     }
     if (wx === undefined) continue;
     const target = isRight ? p1 : p1b;
     target.targetX = wx * P1_SENS;
     target.targetY = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
+    target.targetTilt = tilt;
   }
 }
 
@@ -955,6 +987,10 @@ renderer.setAnimationLoop((time, frame) => {
     p1b.x += (p1b.targetX - p1b.x) * ls; p1b.y += (p1b.targetY - p1b.y) * ls;
     clampPaddle(p1b);
   }
+  // Smooth tilt toward target (fast, independent of lerpSpeed penalty)
+  const ts = Math.min(12 * dt, 1);
+  p1.tilt  += (p1.targetTilt  - p1.tilt)  * ts;
+  p1b.tilt += (p1b.targetTilt - p1b.tilt) * ts;
 
   updateCpu(dt);   // also calls updateBrickGroupX(1, p2HeadX)
   updateBall(dt);
@@ -984,8 +1020,8 @@ renderer.setAnimationLoop((time, frame) => {
   pushTrail(ball.pos);
 
   ballMesh.position.copy(ball.pos);
-  paddle1.position.set(p1.x,   p1.y,   PADDLE_INSET);       paddle1.rotation.set(0, 0, 0);
-  paddle1b.position.set(p1b.x, p1b.y,  PADDLE_INSET);       paddle1b.rotation.set(0, 0, 0);
+  paddle1.position.set(p1.x,   p1.y,   PADDLE_INSET);       paddle1.rotation.set(p1.tilt,  0, 0);
+  paddle1b.position.set(p1b.x, p1b.y,  PADDLE_INSET);       paddle1b.rotation.set(p1b.tilt, 0, 0);
   paddle2.position.set(p2.x,   p2.y,   AD - PADDLE_INSET);  paddle2.rotation.set(0, Math.PI, 0);
   paddle2b.position.set(p2b.x, p2b.y,  AD - PADDLE_INSET);  paddle2b.rotation.set(0, Math.PI, 0);
 
