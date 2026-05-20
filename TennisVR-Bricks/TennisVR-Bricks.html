@@ -393,25 +393,10 @@ function updateVRBricks() {
   const W = vrScoreCanvas.width, H = vrScoreCanvas.height;
   const ctx = vrScoreCtx;
   ctx.clearRect(0, 0, W, H);
-  // Scores
-  ctx.font = 'bold 32px monospace'; ctx.textBaseline = 'top';
-  ctx.fillStyle = '#44aaff'; ctx.textAlign = 'right';  ctx.fillText(p1Score, W * 0.44, 6);
-  ctx.fillStyle = '#888';    ctx.textAlign = 'center'; ctx.fillText('—', W * 0.5, 6);
-  ctx.fillStyle = '#ff4466'; ctx.textAlign = 'left';   ctx.fillText(p2Score, W * 0.56, 6);
-  // Brick health
-  const sz = 20, gap = 5;
-  const totalW = BRICK_COUNT * sz + (BRICK_COUNT - 1) * gap;
-  const cy = 52;
-  for (let i = 0; i < BRICK_COUNT; i++) {
-    const x1 = W * 0.27 - totalW / 2 + i * (sz + gap);
-    ctx.fillStyle = p1Bricks[i].alive ? (i === 2 ? '#ffffff' : '#3377dd') : '#222244';
-    ctx.fillRect(x1, cy, sz, sz);
-  }
-  for (let i = 0; i < BRICK_COUNT; i++) {
-    const x2 = W * 0.73 - totalW / 2 + i * (sz + gap);
-    ctx.fillStyle = p2Bricks[i].alive ? (i === 2 ? '#ffffff' : '#dd3355') : '#442222';
-    ctx.fillRect(x2, cy, sz, sz);
-  }
+  ctx.font = 'bold 56px monospace'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#44aaff'; ctx.textAlign = 'right';  ctx.fillText(p1Score, W * 0.44, H / 2);
+  ctx.fillStyle = '#888';    ctx.textAlign = 'center'; ctx.fillText('—', W * 0.5, H / 2);
+  ctx.fillStyle = '#ff4466'; ctx.textAlign = 'left';   ctx.fillText(p2Score, W * 0.56, H / 2);
   vrScoreTex.needsUpdate = true;
 }
 
