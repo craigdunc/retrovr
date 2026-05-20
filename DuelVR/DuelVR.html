@@ -134,7 +134,10 @@ const AD = 2.74;
 const AY = 0.76;
 const BALL_R       = 0.024;
 const PADDLE_R     = 0.080;
+const COIN_R       = 0.022;   // tiny coin-puck radius when hand is past front plane
 const PADDLE_INSET = 0.15;
+const TILT_Z_BACK  = 0.30;   // hand depth ahead of head (m) = full vertical paddle
+const TILT_Z_FRONT = 0.60;   // 30cm further forward = full horizontal coin + laser
 const P1_SENS      = 1.8;
 const ARENA_CY     = AY + AH * 0.5;
 
@@ -306,6 +309,18 @@ const { group: paddle2b, faceMat: p2bFaceMat } = makePaddle(0xdd7722, 0xffbb66);
 arenaRoot.add(paddle1, paddle1b, paddle2, paddle2b);
 const paddleFlash = [0, 0, 0, 0];
 
+// ── Laser pointers (visible when hand is past the front tilt plane) ───────────
+function makeLaser(color) {
+  const pts = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, AD - PADDLE_INSET)];
+  const mat  = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.75, depthWrite: false });
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), mat);
+  line.visible = false;
+  arenaRoot.add(line);
+  return line;
+}
+const laser1  = makeLaser(0x88bbff);
+const laser1b = makeLaser(0x66ddff);
+
 // ── Bricks ────────────────────────────────────────────────────────────────────
 function makeBricks(brickZ, fillColor, edgeColor) {
   const groupW = BRICK_W * BRICK_COUNT;
@@ -462,8 +477,8 @@ const scoreP1El = document.getElementById('score-p1');
 const scoreP2El = document.getElementById('score-p2');
 
 const ball = { pos: new THREE.Vector3(0, MID_Y, AD * 0.5), vel: new THREE.Vector3() };
-const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0 };
-const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0 };
+const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false };
+const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false };
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
 const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
 let serving = true, servePhase = 'drop', serveTimer = 0;
@@ -488,8 +503,8 @@ function setAllPaddlesVisible(v) {
 }
 
 function resetPaddles() {
-  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST;
-  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST;
+  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false;
+  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false;
   p2.deleted  = false; p2.speedMult  = 1.0;
   p2b.deleted = false; p2b.speedMult = 1.0;
 }
@@ -709,11 +724,9 @@ renderer.xr.addEventListener('sessionstart', () => {
   vrLogoMesh.visible = true; vrStartMesh.visible = true;
   vrScoreMesh.visible = true;
   vrScoreMesh.position.y = SCORE_ATTRACT_Y; vrScoreTargetY = SCORE_ATTRACT_Y;
-  startCalib();
   xrSession.addEventListener('selectstart', () => {
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    if (dismissCalib()) return;
-    if ((gameState === 'attract' || gameState === 'gameover') && arenaAnimTime < 0 && !calibPhase) startGame();
+    if ((gameState === 'attract' || gameState === 'gameover') && arenaAnimTime < 0) startGame();
   });
 });
 
@@ -729,165 +742,35 @@ const grip1 = renderer.xr.getControllerGrip(0);
 const grip2 = renderer.xr.getControllerGrip(1);
 scene.add(grip1, grip2);
 
-const _xrQ = new THREE.Quaternion();
-// TILT_SCALE: 43° physical motion → π/2. ×2.5 makes that just tip over π/2 so any
-// motion past ~40° reads as fully horizontal, giving the "snap" feel.
-const TILT_SCALE = 2.5;
-
-// Reference quaternions captured via in-headset calibration (Quest 3, this room).
-// Inverse = conjugate of unit quaternion. poseToTilt measures angle from this ref.
-function _makeRefInv(x, y, z, w) {
-  return new THREE.Quaternion(-x, -y, -z, w).normalize(); // conjugate, then normalize
-}
-const TREF_CTRL_R = _makeRefInv( 0.04,  0.88, -0.47, 0.07);
-const TREF_CTRL_L = _makeRefInv( 0.07, -0.87,  0.48, 0.08);
-const TREF_HAND_R = _makeRefInv(-0.58, -0.40,  0.80, 0.10);
-const TREF_HAND_L = _makeRefInv(-0.62,  0.40, -0.77, 0.11);
-
-function poseToTilt(ori, refInv) {
-  _xrQ.set(ori.x, ori.y, ori.z, ori.w);
-  _xrQ.premultiply(refInv); // q_rel = refInv * current
-  // total rotation angle from reference pose, regardless of axis
-  const angle = 2 * Math.acos(Math.abs(THREE.MathUtils.clamp(_xrQ.w, -1, 1)));
-  return THREE.MathUtils.clamp(angle * TILT_SCALE, 0, Math.PI / 2);
-}
-
 function updateXRPaddles(frame) {
   if (!xrSession || !frame) return;
   const rs = renderer.xr.getReferenceSpace();
   if (!rs) return;
+  const headZ = renderer.xr.getCamera().position.z;
   for (const src of xrSession.inputSources) {
     const isRight = src.handedness === 'right', isLeft = src.handedness === 'left';
     if (!isRight && !isLeft) continue;
-    let wx, wy, tilt = 0;
+    let wx, wy, wz;
     if (src.hand) {
       const wrist = src.hand.get('wrist');
       if (wrist) {
         const pose = frame.getJointPose(wrist, rs);
-        if (pose) {
-          wx = pose.transform.position.x; wy = pose.transform.position.y;
-          tilt = poseToTilt(pose.transform.orientation, isRight ? TREF_HAND_R : TREF_HAND_L);
-        }
+        if (pose) { wx = pose.transform.position.x; wy = pose.transform.position.y; wz = pose.transform.position.z; }
       }
     } else if (src.gripSpace) {
       const pose = frame.getPose(src.gripSpace, rs);
-      if (pose) {
-        wx = pose.transform.position.x; wy = pose.transform.position.y;
-        tilt = poseToTilt(pose.transform.orientation, isRight ? TREF_CTRL_R : TREF_CTRL_L);
-      }
+      if (pose) { wx = pose.transform.position.x; wy = pose.transform.position.y; wz = pose.transform.position.z; }
     }
     if (wx === undefined) continue;
+    const depth = wz - headZ;
+    const t = THREE.MathUtils.clamp((depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK), 0, 1);
     const target = isRight ? p1 : p1b;
-    target.targetX = wx * P1_SENS;
-    target.targetY = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
-    target.targetTilt = tilt;
+    target.targetX     = wx * P1_SENS;
+    target.targetY     = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
+    target.targetTilt  = t * Math.PI / 2;
+    target.targetScale = THREE.MathUtils.lerp(1.0, COIN_R / PADDLE_R, t);
+    target.laserOn     = t >= 1;
   }
-}
-
-// ── Calibration overlay ───────────────────────────────────────────────────────
-const calibCanvas = document.createElement('canvas');
-calibCanvas.width = 512; calibCanvas.height = 320;
-const calibCtx  = calibCanvas.getContext('2d');
-const calibTex  = new THREE.CanvasTexture(calibCanvas);
-const calibMesh = new THREE.Mesh(
-  new THREE.PlaneGeometry(0.9, 0.9 * 320 / 512),
-  new THREE.MeshBasicMaterial({ map: calibTex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
-);
-calibMesh.position.set(0, 1.55, 0.72); calibMesh.rotation.y = Math.PI; calibMesh.visible = false;
-scene.add(calibMesh);
-
-const CALIB_SEQ = ['up3','up2','up1','upNow','out3','out2','out1','outNow','results'];
-let calibPhase = null, calibTimer = 0;
-let calibVertR = null, calibVertL = null, calibHorizR = null, calibHorizL = null;
-
-function startCalib() {
-  calibPhase = 'up3'; calibTimer = 0;
-  calibVertR = calibVertL = calibHorizR = calibHorizL = null;
-  calibMesh.visible = true;
-  drawCalib();
-}
-
-function fmtQ(q) {
-  if (!q) return ' ?.??  ?.??  ?.??  ?.??';
-  return [q.x, q.y, q.z, q.w].map(v => (v >= 0 ? ' ' : '') + v.toFixed(2)).join('  ');
-}
-
-function drawCalib() {
-  const W = 512, H = 320;
-  calibCtx.clearRect(0, 0, W, H);
-  calibCtx.fillStyle = 'rgba(0,0,20,0.9)'; calibCtx.fillRect(0, 0, W, H);
-
-  if (calibPhase === 'results') {
-    calibCtx.font = 'bold 20px monospace'; calibCtx.textAlign = 'center'; calibCtx.textBaseline = 'top';
-    calibCtx.fillStyle = '#ffffff'; calibCtx.fillText('VERTICAL  (hands up)', W / 2, 12);
-    calibCtx.fillStyle = '#88ffcc'; calibCtx.textAlign = 'left';
-    calibCtx.fillText('R  x  y  z  w', 20, 44);
-    calibCtx.fillText(fmtQ(calibVertR), 20, 68);
-    calibCtx.fillText('L  x  y  z  w', 20, 100);
-    calibCtx.fillText(fmtQ(calibVertL), 20, 124);
-    calibCtx.fillStyle = '#ffffff'; calibCtx.textAlign = 'center';
-    calibCtx.fillText('HORIZONTAL  (hands out)', W / 2, 162);
-    calibCtx.fillStyle = '#ffcc88'; calibCtx.textAlign = 'left';
-    calibCtx.fillText('R  x  y  z  w', 20, 194);
-    calibCtx.fillText(fmtQ(calibHorizR), 20, 218);
-    calibCtx.fillText('L  x  y  z  w', 20, 250);
-    calibCtx.fillText(fmtQ(calibHorizL), 20, 274);
-    calibCtx.fillStyle = '#555555'; calibCtx.textAlign = 'center'; calibCtx.font = '16px monospace';
-    calibCtx.fillText('press trigger to dismiss', W / 2, 302);
-  } else {
-    const isNow = calibPhase === 'upNow' || calibPhase === 'outNow';
-    const label = calibPhase.startsWith('up') ? 'Hands up!' : 'Hands out!';
-    const tick  = isNow ? 'NOW' : calibPhase.slice(-1);
-    calibCtx.font = 'bold 36px monospace'; calibCtx.textAlign = 'center'; calibCtx.textBaseline = 'middle';
-    calibCtx.fillStyle = '#00ffcc';
-    calibCtx.fillText(label, W / 2, H * 0.38);
-    calibCtx.font = 'bold 100px monospace';
-    calibCtx.fillStyle = isNow ? '#ffff00' : '#ffffff';
-    calibCtx.fillText(tick, W / 2, H * 0.68);
-  }
-  calibTex.needsUpdate = true;
-}
-
-function captureCalibFrame(type, frame) {
-  if (!frame || !xrSession) return;
-  const rs = renderer.xr.getReferenceSpace(); if (!rs) return;
-  for (const src of xrSession.inputSources) {
-    const isRight = src.handedness === 'right', isLeft = src.handedness === 'left';
-    if (!isRight && !isLeft) continue;
-    let ori = null;
-    if (src.hand) {
-      const wrist = src.hand.get('wrist');
-      if (wrist) { const p = frame.getJointPose(wrist, rs); if (p) ori = p.transform.orientation; }
-    } else if (src.gripSpace) {
-      const p = frame.getPose(src.gripSpace, rs); if (p) ori = p.transform.orientation;
-    }
-    if (!ori) continue;
-    const q = { x: +ori.x.toFixed(2), y: +ori.y.toFixed(2), z: +ori.z.toFixed(2), w: +ori.w.toFixed(2) };
-    if (type === 'vert')  { if (isRight) calibVertR  = q; else calibVertL  = q; }
-    else                  { if (isRight) calibHorizR = q; else calibHorizL = q; }
-  }
-  drawCalib();
-}
-
-function updateCalib(dt, frame) {
-  if (!calibPhase) return;
-  if (calibPhase === 'upNow' || calibPhase === 'outNow') {
-    captureCalibFrame(calibPhase === 'upNow' ? 'vert' : 'horiz', frame);
-  }
-  calibTimer += dt;
-  if (calibPhase === 'results') return; // stays until trigger press
-  if (calibTimer >= 1.0) {
-    calibTimer = 0;
-    const next = CALIB_SEQ[CALIB_SEQ.indexOf(calibPhase) + 1];
-    calibPhase = next ?? null;
-    if (calibPhase === null) { calibMesh.visible = false; return; }
-    drawCalib();
-  }
-}
-
-function dismissCalib() {
-  if (calibPhase !== 'results') return false;
-  calibPhase = null; calibMesh.visible = false; return true;
 }
 
 // ── Ball physics ──────────────────────────────────────────────────────────────
@@ -1083,7 +966,7 @@ const clock = new THREE.Clock();
 renderer.setAnimationLoop((time, frame) => {
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  if (frame) { updateCalib(dt, frame); updateXRPaddles(frame); }
+  if (frame) updateXRPaddles(frame);
 
   // Lerp P1 paddles toward targets (respects lerpSpeed penalty from brick hits)
   if (!p1.deleted) {
@@ -1096,10 +979,12 @@ renderer.setAnimationLoop((time, frame) => {
     p1b.x += (p1b.targetX - p1b.x) * ls; p1b.y += (p1b.targetY - p1b.y) * ls;
     clampPaddle(p1b);
   }
-  // Smooth tilt toward target (fast, independent of lerpSpeed penalty)
+  // Smooth tilt and scale toward targets
   const ts = Math.min(12 * dt, 1);
-  p1.tilt  += (p1.targetTilt  - p1.tilt)  * ts;
-  p1b.tilt += (p1b.targetTilt - p1b.tilt) * ts;
+  p1.tilt   += (p1.targetTilt   - p1.tilt)   * ts;
+  p1b.tilt  += (p1b.targetTilt  - p1b.tilt)  * ts;
+  p1.scale  += (p1.targetScale  - p1.scale)  * ts;
+  p1b.scale += (p1b.targetScale - p1b.scale) * ts;
 
   updateCpu(dt);   // also calls updateBrickGroupX(1, p2HeadX)
   updateBall(dt);
@@ -1129,10 +1014,15 @@ renderer.setAnimationLoop((time, frame) => {
   pushTrail(ball.pos);
 
   ballMesh.position.copy(ball.pos);
-  paddle1.position.set(p1.x,   p1.y,   PADDLE_INSET);       paddle1.rotation.set(p1.tilt,  0, 0);
-  paddle1b.position.set(p1b.x, p1b.y,  PADDLE_INSET);       paddle1b.rotation.set(p1b.tilt, 0, 0);
+  paddle1.position.set(p1.x,   p1.y,   PADDLE_INSET);  paddle1.rotation.set(p1.tilt,   0, 0);  paddle1.scale.setScalar(p1.scale);
+  paddle1b.position.set(p1b.x, p1b.y,  PADDLE_INSET);  paddle1b.rotation.set(p1b.tilt,  0, 0);  paddle1b.scale.setScalar(p1b.scale);
   paddle2.position.set(p2.x,   p2.y,   AD - PADDLE_INSET);  paddle2.rotation.set(0, Math.PI, 0);
   paddle2b.position.set(p2b.x, p2b.y,  AD - PADDLE_INSET);  paddle2b.rotation.set(0, Math.PI, 0);
+  // Laser pointers: shown when hand is past the front tilt plane
+  const showL1  = renderer.xr.isPresenting && p1.laserOn  && !p1.deleted;
+  const showL1b = renderer.xr.isPresenting && p1b.laserOn && !p1b.deleted;
+  laser1.visible  = showL1;   if (showL1)  laser1.position.set(p1.x,   p1.y,   PADDLE_INSET);
+  laser1b.visible = showL1b;  if (showL1b) laser1b.position.set(p1b.x, p1b.y,  PADDLE_INSET);
 
   if (vrScoreMesh.visible) {
     vrScoreMesh.position.y += (vrScoreTargetY - vrScoreMesh.position.y) * Math.min(dt * 2.5, 1);
