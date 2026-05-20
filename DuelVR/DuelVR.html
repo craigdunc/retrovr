@@ -427,7 +427,7 @@ function updateVRBricks() {
 // ── VR attract overlay ────────────────────────────────────────────────────────
 const vrTexLoader = new THREE.TextureLoader();
 const vrLogoMesh = new THREE.Mesh(
-  new THREE.PlaneGeometry(0.85, 0.85 / 3.52),
+  new THREE.PlaneGeometry(0.85, 0.85 / 2.842),
   new THREE.MeshBasicMaterial({ map: vrTexLoader.load('DuelVR.png'), transparent: true, depthWrite: false })
 );
 vrLogoMesh.position.set(0, 1.62, 0.75); vrLogoMesh.rotation.y = Math.PI; vrLogoMesh.visible = false;
