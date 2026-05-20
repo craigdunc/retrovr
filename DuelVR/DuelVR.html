@@ -755,7 +755,10 @@ function updateXRPaddles(frame) {
   if (!xrSession || !frame) return;
   const rs = renderer.xr.getReferenceSpace();
   if (!rs) return;
-  const headZ = renderer.xr.getCamera().position.z;
+  // Use viewer pose so headZ is in the same reference space as hand/grip poses
+  const viewerPose = frame.getViewerPose(rs);
+  if (!viewerPose) return;
+  const headZ = viewerPose.transform.position.z;
   for (const src of xrSession.inputSources) {
     const isRight = src.handedness === 'right', isLeft = src.handedness === 'left';
     if (!isRight && !isLeft) continue;
