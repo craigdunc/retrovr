@@ -315,10 +315,9 @@ function makeBricks(brickZ, fillColor, edgeColor) {
 
 const p1Bricks = makeBricks(BRICK_Z1, 0x2255bb, 0x44aaff);
 const p2Bricks = makeBricks(BRICK_Z2, 0xbb2233, 0xff4466);
-// Brick 2 (centre) is the life brick — starts white
-p1Bricks[2].state = 'white';
-p1Bricks[2].fillMat.color.setHex(0xffffff);
-p1Bricks[2].edgeMat.color.setHex(0xffffff);
+// Centre brick (index 2) is the life brick — starts white for both sides
+p1Bricks[2].state = 'white'; p1Bricks[2].fillMat.color.setHex(0xffffff); p1Bricks[2].edgeMat.color.setHex(0xffffff);
+p2Bricks[2].state = 'white'; p2Bricks[2].fillMat.color.setHex(0xffffff); p2Bricks[2].edgeMat.color.setHex(0xffffff);
 
 let brickCounts = [BRICK_COUNT, BRICK_COUNT];
 const brickGroupX = [0, 0];
@@ -333,6 +332,9 @@ function resetBricks() {
     }
     const b2 = p2Bricks[i];
     b2.alive = true; b2.mesh.visible = true; b2.edges.visible = true;
+    if (i === 2) {
+      b2.state = 'white'; b2.fillMat.color.setHex(0xffffff); b2.edgeMat.color.setHex(0xffffff);
+    }
   }
   updateBrickGroupX(0, 0);
   updateBrickGroupX(1, 0);
@@ -456,8 +458,8 @@ const MID_Y = AY + AH * 0.55;
 const ball = { pos: new THREE.Vector3(0, MID_Y, AD * 0.5), vel: new THREE.Vector3() };
 const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false };
 const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false };
-const p2  = { x: 0, y: MID_Y };
-const p2b = { x: 0, y: MID_Y };
+const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
+const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
 let serving = true, servePhase = 'drop', serveTimer = 0;
 
 const attractEl   = document.getElementById('attract');
@@ -475,13 +477,15 @@ const DROP_DURATION = 1.1, PAUSE_DURATION = 0.35;
 function setAllPaddlesVisible(v) {
   paddle1.visible  = v && !p1.deleted;
   paddle1b.visible = v && !p1b.deleted;
-  paddle2.visible  = v;
-  paddle2b.visible = v;
+  paddle2.visible  = v && !p2.deleted;
+  paddle2b.visible = v && !p2b.deleted;
 }
 
 function resetPaddles() {
   p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST;
   p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST;
+  p2.deleted  = false; p2.speedMult  = 1.0;
+  p2b.deleted = false; p2b.speedMult = 1.0;
 }
 
 function startServe(afterPoint = false) {
@@ -635,9 +639,10 @@ function resetCpuOff() {
 resetCpuOff();
 
 function cpuMoveToward(paddle, tx, ty, dt) {
+  if (paddle.deleted) return;
   const dx = tx - paddle.x, dy = ty - paddle.y;
   const d = Math.sqrt(dx * dx + dy * dy);
-  if (d > 0.001) { paddle.x += dx / d * Math.min(d, CPU_SPEED * dt); paddle.y += dy / d * Math.min(d, CPU_SPEED * dt); }
+  if (d > 0.001) { const spd = CPU_SPEED * (paddle.speedMult || 1.0) * dt; paddle.x += dx / d * Math.min(d, spd); paddle.y += dy / d * Math.min(d, spd); }
 }
 
 function updateCpu(dt) {
@@ -724,6 +729,13 @@ function applyP1BrickEffect(idx) {
   else if (idx === 4) { p1.deleted  = true;  paddle1.visible  = false; }
 }
 
+function applyP2BrickEffect(idx) {
+  if      (idx === 0) { p2b.deleted = true;  paddle2b.visible = false; }
+  else if (idx === 1) { p2b.speedMult = 0.5; }
+  else if (idx === 3) { p2.speedMult  = 0.5; }
+  else if (idx === 4) { p2.deleted  = true;  paddle2.visible  = false; }
+}
+
 function checkBrickHit(bricks, sideIdx, brickZ, velZSign) {
   const front = brickZ + (BRICK_D / 2 + BALL_R) * (-velZSign);
   const back  = brickZ + (BRICK_D / 2 + BALL_R) * ( velZSign);
@@ -743,24 +755,27 @@ function checkBrickHit(bricks, sideIdx, brickZ, velZSign) {
       soundBrick();
       triggerBounceRing(brick.x, brick.y, brickZ, 'z');
 
-      if (sideIdx === 0 && i === 2) {
-        // Life brick: white → blue (survives); blue → P1 loses
+      if (i === 2) {
+        // Life brick: white → team colour (survives); team colour → that side loses
+        const teamHex  = sideIdx === 0 ? 0x2255bb : 0xbb2233;
+        const edgeHex  = sideIdx === 0 ? 0x44aaff : 0xff4466;
         if (brick.state === 'white') {
           brick.state = 'blue';
-          brick.fillMat.color.setHex(0x2255bb);
-          brick.edgeMat.color.setHex(0x44aaff);
+          brick.fillMat.color.setHex(teamHex);
+          brick.edgeMat.color.setHex(edgeHex);
           updateVRBricks();
         } else {
           brick.alive = false; brick.mesh.visible = false; brick.edges.visible = false;
-          brickCounts[0]--;
+          brickCounts[sideIdx]--;
           updateVRBricks();
-          endGame(0);
+          endGame(sideIdx);
         }
       } else {
         brick.alive = false; brick.mesh.visible = false; brick.edges.visible = false;
         brickCounts[sideIdx]--;
         updateVRBricks();
         if (sideIdx === 0) applyP1BrickEffect(i);
+        else               applyP2BrickEffect(i);
         if (brickCounts[sideIdx] <= 0) endGame(sideIdx);
       }
       return true;
@@ -851,8 +866,8 @@ function updateBall(dt) {
   if (ball.vel.z > 0 && ball.pos.z > AD - PADDLE_INSET - BALL_R) {
     const dxa = ball.pos.x - p2.x,  dya = ball.pos.y - p2.y;
     const dxb = ball.pos.x - p2b.x, dyb = ball.pos.y - p2b.y;
-    const hitA = Math.sqrt(dxa*dxa + dya*dya) < PADDLE_R + BALL_R;
-    const hitB = Math.sqrt(dxb*dxb + dyb*dyb) < PADDLE_R + BALL_R;
+    const hitA = !p2.deleted  && Math.sqrt(dxa*dxa + dya*dya) < PADDLE_R + BALL_R;
+    const hitB = !p2b.deleted && Math.sqrt(dxb*dxb + dyb*dyb) < PADDLE_R + BALL_R;
     if (hitA) {
       ball.pos.z = AD - PADDLE_INSET - BALL_R; applyPaddleHit(p2.x,  p2.y,  -1, 2);
     } else if (hitB) {
