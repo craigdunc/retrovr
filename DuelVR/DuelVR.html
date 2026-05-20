@@ -871,10 +871,9 @@ function updateCalib(dt, frame) {
     captureCalibFrame(calibPhase === 'upNow' ? 'vert' : 'horiz', frame);
   }
   calibTimer += dt;
-  const threshold = calibPhase === 'results' ? 30 : 1.0;
-  if (calibTimer >= threshold) {
+  if (calibPhase === 'results') return; // stays until trigger press
+  if (calibTimer >= 1.0) {
     calibTimer = 0;
-    if (calibPhase === 'results') { calibPhase = null; calibMesh.visible = false; return; }
     const next = CALIB_SEQ[CALIB_SEQ.indexOf(calibPhase) + 1];
     calibPhase = next ?? null;
     if (calibPhase === null) { calibMesh.visible = false; return; }
