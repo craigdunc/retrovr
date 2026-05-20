@@ -729,25 +729,22 @@ scene.add(grip1, grip2);
 
 const _xrV = new THREE.Vector3();
 const _xrQ = new THREE.Quaternion();
+const TILT_SCALE = 2.0;
+// Right hand: +Z = back-of-hand. Left hand: mirrored, so -Z = back-of-hand.
+const _TILT_HAND_R = new THREE.Vector3( 0, 0,  1);
+const _TILT_HAND_L = new THREE.Vector3( 0, 0, -1);
+// Controller: grip +Z = forward (pointing direction). Tip toward floor = neg world Y → tilt.
+const _TILT_CTRL   = new THREE.Vector3( 0, 0,  1);
 
-function poseToTilt(ori, axis) {
-  // axis: vector in local space whose world-Y tells us tilt amount
+function poseToTilt(ori, axis, negY) {
   _xrQ.set(ori.x, ori.y, ori.z, ori.w);
   _xrV.copy(axis).applyQuaternion(_xrQ);
-  // clamp to [0, π/2]: no past-vertical, no past-horizontal
-  return THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(_xrV.y, -1, 1)), 0, Math.PI / 2);
+  const y = negY ? -_xrV.y : _xrV.y;
+  return THREE.MathUtils.clamp(
+    Math.asin(THREE.MathUtils.clamp(y, -1, 1)) * TILT_SCALE,
+    0, Math.PI / 2
+  );
 }
-
-// Hand tracking: +Z of wrist joint = back-of-hand (per WebXR Hand Input spec)
-// Back-of-hand pointing up (+Y world) → palm facing down → horizontal paddle
-const HAND_TILT_AXIS = new THREE.Vector3(0, 0, 1);
-
-// Controller: +Y of grip space = top of controller
-// Top pointing forward (+Z world) = pitched forward → horizontal paddle
-// We measure how much top has moved toward +Z, so use Z component of local +Y → use a vector
-// that maps tilt-forward motion to positive Y in world. Grip pitches forward: local +X goes
-// toward +Y world, so measure local +X dot world +Y:
-const CTRL_TILT_AXIS = new THREE.Vector3(1, 0, 0);
 
 function updateXRPaddles(frame) {
   if (!xrSession || !frame) return;
@@ -763,14 +760,14 @@ function updateXRPaddles(frame) {
         const pose = frame.getJointPose(wrist, rs);
         if (pose) {
           wx = pose.transform.position.x; wy = pose.transform.position.y;
-          tilt = poseToTilt(pose.transform.orientation, HAND_TILT_AXIS);
+          tilt = poseToTilt(pose.transform.orientation, isRight ? _TILT_HAND_R : _TILT_HAND_L, false);
         }
       }
     } else if (src.gripSpace) {
       const pose = frame.getPose(src.gripSpace, rs);
       if (pose) {
         wx = pose.transform.position.x; wy = pose.transform.position.y;
-        tilt = poseToTilt(pose.transform.orientation, CTRL_TILT_AXIS);
+        tilt = poseToTilt(pose.transform.orientation, _TILT_CTRL, true);
       }
     }
     if (wx === undefined) continue;
