@@ -30,9 +30,19 @@
       color: #aaa; font-family: 'Courier New', monospace; font-size: 14px;
       margin-top: 24px; letter-spacing: 0.15em; animation: blink 1.2s step-end infinite;
     }
+    #score {
+      position: absolute; top: 20px; left: 0; width: 100%; text-align: center;
+      color: #fff; font-family: 'Courier New', monospace; font-size: 48px;
+      font-weight: bold; letter-spacing: 0.15em; pointer-events: none;
+      opacity: 0; transition: opacity 0.4s;
+    }
+    #score.visible { opacity: 1; }
+    #score-p1 { color: #44aaff; }
+    #score-p2 { color: #ff4466; }
   </style>
 </head>
 <body>
+<div id="score"><span id="score-p1">0</span> <span style="color:#fff"> — </span> <span id="score-p2">0</span></div>
 <div id="attract">
   <img id="attract-logo"  src="TennisVR.png" alt="TennisVR">
   <img id="attract-start" src="Start.png"    alt="START">
@@ -383,17 +393,23 @@ function updateVRBricks() {
   const W = vrScoreCanvas.width, H = vrScoreCanvas.height;
   const ctx = vrScoreCtx;
   ctx.clearRect(0, 0, W, H);
-  const sz = 28, gap = 8;
+  // Scores
+  ctx.font = 'bold 32px monospace'; ctx.textBaseline = 'top';
+  ctx.fillStyle = '#44aaff'; ctx.textAlign = 'right';  ctx.fillText(p1Score, W * 0.44, 6);
+  ctx.fillStyle = '#888';    ctx.textAlign = 'center'; ctx.fillText('—', W * 0.5, 6);
+  ctx.fillStyle = '#ff4466'; ctx.textAlign = 'left';   ctx.fillText(p2Score, W * 0.56, 6);
+  // Brick health
+  const sz = 20, gap = 5;
   const totalW = BRICK_COUNT * sz + (BRICK_COUNT - 1) * gap;
-  const cy = H / 2 - sz / 2;
+  const cy = 52;
   for (let i = 0; i < BRICK_COUNT; i++) {
     const x1 = W * 0.27 - totalW / 2 + i * (sz + gap);
-    ctx.fillStyle = p1Bricks[i].alive ? '#3377dd' : '#222244';
+    ctx.fillStyle = p1Bricks[i].alive ? (i === 2 ? '#ffffff' : '#3377dd') : '#222244';
     ctx.fillRect(x1, cy, sz, sz);
   }
   for (let i = 0; i < BRICK_COUNT; i++) {
     const x2 = W * 0.73 - totalW / 2 + i * (sz + gap);
-    ctx.fillStyle = p2Bricks[i].alive ? '#dd3355' : '#442222';
+    ctx.fillStyle = p2Bricks[i].alive ? (i === 2 ? '#ffffff' : '#dd3355') : '#442222';
     ctx.fillRect(x2, cy, sz, sz);
   }
   vrScoreTex.needsUpdate = true;
@@ -454,6 +470,11 @@ function triggerBounceRing(x, y, z, axis) {
 const PADDLE_LERP_FAST = 80;   // effectively instant (clamped to 1 at 60 fps)
 const PADDLE_LERP_SLOW = 4;    // ~6% per frame — noticeable drag
 const MID_Y = AY + AH * 0.55;
+const WIN_SCORE = 7;
+let p1Score = 0, p2Score = 0;
+const scoreEl   = document.getElementById('score');
+const scoreP1El = document.getElementById('score-p1');
+const scoreP2El = document.getElementById('score-p2');
 
 const ball = { pos: new THREE.Vector3(0, MID_Y, AD * 0.5), vel: new THREE.Vector3() };
 const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false };
@@ -488,6 +509,25 @@ function resetPaddles() {
   p2b.deleted = false; p2b.speedMult = 1.0;
 }
 
+function updateScoreDisplay() {
+  scoreP1El.textContent = p1Score;
+  scoreP2El.textContent = p2Score;
+  updateVRBricks();
+}
+
+function scorePoint(scorer, pts = 1) {
+  if (scorer === 0) p1Score += pts; else p2Score += pts;
+  updateScoreDisplay();
+  soundScore();
+  if (p1Score >= WIN_SCORE || p2Score >= WIN_SCORE) {
+    endGame(p1Score >= WIN_SCORE ? 1 : 0);
+  } else {
+    startServe(true);
+  }
+}
+
+const soundScore = () => { blip(600, 0.09, 0.45); setTimeout(() => blip(800, 0.12, 0.5), 90); };
+
 function startServe(afterPoint = false) {
   missDetected[0] = missDetected[1] = false;
   ball.vel.set(0, 0, 0);
@@ -521,6 +561,7 @@ function serveAttract() {
 
 function enterAttractMode(fromGame = false) {
   gameState = 'attract'; serving = false;
+  scoreEl.classList.remove('visible');
   setAllPaddlesVisible(false);
   serveAttract();
   if (renderer.xr.isPresenting) {
@@ -556,9 +597,11 @@ function endGame(loserIdx) {
 
 function startGame() {
   gameState = 'playing';
+  p1Score = 0; p2Score = 0;
+  scoreEl.classList.add('visible');
   resetPaddles();
   resetBricks();
-  updateVRBricks();
+  updateScoreDisplay();
   vrLogoMesh.visible = false; vrStartMesh.visible = false;
   if (renderer.xr.isPresenting) {
     vrScoreMesh.visible = true; vrScoreTargetY = SCORE_GAME_Y;
@@ -755,28 +798,16 @@ function checkBrickHit(bricks, sideIdx, brickZ, velZSign) {
       soundBrick();
       triggerBounceRing(brick.x, brick.y, brickZ, 'z');
 
+      brick.alive = false; brick.mesh.visible = false; brick.edges.visible = false;
+      brickCounts[sideIdx]--;
       if (i === 2) {
-        // Life brick: white → team colour (survives); team colour → that side loses
-        const teamHex  = sideIdx === 0 ? 0x2255bb : 0xbb2233;
-        const edgeHex  = sideIdx === 0 ? 0x44aaff : 0xff4466;
-        if (brick.state === 'white') {
-          brick.state = 'blue';
-          brick.fillMat.color.setHex(teamHex);
-          brick.edgeMat.color.setHex(edgeHex);
-          updateVRBricks();
-        } else {
-          brick.alive = false; brick.mesh.visible = false; brick.edges.visible = false;
-          brickCounts[sideIdx]--;
-          updateVRBricks();
-          endGame(sideIdx);
-        }
+        // Centre brick: 100 pts instant win for the attacker
+        updateVRBricks();
+        scorePoint(1 - sideIdx, 100);
       } else {
-        brick.alive = false; brick.mesh.visible = false; brick.edges.visible = false;
-        brickCounts[sideIdx]--;
         updateVRBricks();
         if (sideIdx === 0) applyP1BrickEffect(i);
         else               applyP2BrickEffect(i);
-        if (brickCounts[sideIdx] <= 0) endGame(sideIdx);
       }
       return true;
     }
@@ -856,10 +887,10 @@ function updateBall(dt) {
     }
   }
 
-  // P1 back wall bounce (if ball got past bricks or all bricks gone)
+  // P1 back wall: P2 scores a point
   if (ball.vel.z < 0 && ball.pos.z < BALL_R) {
-    ball.pos.z = BALL_R; ball.vel.z = Math.abs(ball.vel.z);
     triggerBounceRing(ball.pos.x, ball.pos.y, 0, 'z');
+    scorePoint(1);
   }
 
   // ── P2 end — paddle check ─────────────────────────────────────────────────
@@ -883,10 +914,10 @@ function updateBall(dt) {
     }
   }
 
-  // P2 back wall bounce
+  // P2 back wall: P1 scores a point
   if (ball.vel.z > 0 && ball.pos.z > AD - BALL_R) {
-    ball.pos.z = AD - BALL_R; ball.vel.z = -Math.abs(ball.vel.z);
     triggerBounceRing(ball.pos.x, ball.pos.y, AD, 'z');
+    scorePoint(0);
   }
 }
 
