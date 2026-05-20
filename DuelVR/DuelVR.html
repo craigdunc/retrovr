@@ -136,7 +136,7 @@ const BALL_R       = 0.024;
 const PADDLE_R     = 0.080;
 const COIN_R       = 0.022;   // tiny coin-puck radius when hand is past front plane
 const PADDLE_INSET = 0.15;
-const TILT_Z_BACK  = 0.30;              // hand depth ahead of head (m) = full vertical paddle
+const TILT_Z_BACK  = 0.15;              // hand depth ahead of head (m) = full vertical paddle
 const TILT_Z_FRONT = TILT_Z_BACK + PADDLE_INSET / 2; // half x = full horizontal coin + laser
 const P1_SENS      = 1.8;
 const ARENA_CY     = AY + AH * 0.5;
@@ -1037,8 +1037,9 @@ renderer.setAnimationLoop((time, frame) => {
   pushTrail(ball.pos);
 
   ballMesh.position.copy(ball.pos);
-  paddle1.position.set(p1.x,   p1.y,   PADDLE_INSET);  paddle1.rotation.set(p1.tilt,   0, 0);  paddle1.scale.setScalar(p1.scale);
-  paddle1b.position.set(p1b.x, p1b.y,  PADDLE_INSET);  paddle1b.rotation.set(p1b.tilt,  0, 0);  paddle1b.scale.setScalar(p1b.scale);
+  // Pivot at bottom edge: centre drops and moves forward as tilt increases
+  paddle1.position.set(p1.x,   p1.y   - PADDLE_R*(1-Math.cos(p1.tilt)),  PADDLE_INSET + PADDLE_R*Math.sin(p1.tilt));  paddle1.rotation.set(p1.tilt,  0, 0);  paddle1.scale.setScalar(p1.scale);
+  paddle1b.position.set(p1b.x, p1b.y  - PADDLE_R*(1-Math.cos(p1b.tilt)), PADDLE_INSET + PADDLE_R*Math.sin(p1b.tilt)); paddle1b.rotation.set(p1b.tilt, 0, 0);  paddle1b.scale.setScalar(p1b.scale);
   paddle2.position.set(p2.x,   p2.y,   AD - PADDLE_INSET);  paddle2.rotation.set(0, Math.PI, 0);
   paddle2b.position.set(p2b.x, p2b.y,  AD - PADDLE_INSET);  paddle2b.rotation.set(0, Math.PI, 0);
   // Laser visibility is managed inside updateXRPaddles; hide both outside VR
