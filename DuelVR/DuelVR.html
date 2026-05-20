@@ -264,36 +264,46 @@ const wallFlash = [0, 0];
 const gridHelper = new THREE.GridHelper(12, 30, 0x141420, 0x111118);
 scene.add(gridHelper);
 
-// ── Ball ──────────────────────────────────────────────────────────────────────
-const ballMesh = new THREE.Mesh(
-  new THREE.SphereGeometry(BALL_R, 14, 10),
-  new THREE.MeshBasicMaterial({ color: 0xffffff })
-);
-arenaRoot.add(ballMesh);
-{
+// ── Ball factory (one mesh + trail per ball) ──────────────────────────────────
+const TRAIL = 22;
+const _glowTex = (() => {
   const c = document.createElement('canvas'); c.width = c.height = 64;
   const ctx = c.getContext('2d');
   const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
   g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.3, 'rgba(255,255,255,0.5)'); g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
-  sprite.scale.set(0.30, 0.30, 1); ballMesh.add(sprite);
-}
+  return new THREE.CanvasTexture(c);
+})();
 
-const TRAIL = 22;
-const trailMeshes = Array.from({ length: TRAIL }, (_, i) => {
-  const m = new THREE.Mesh(
-    new THREE.SphereGeometry(BALL_R * (1 - i / TRAIL) * 0.7, 6, 4),
-    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: (1 - i / TRAIL) * 0.32, depthWrite: false })
+function makeBallObject() {
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(BALL_R, 14, 10),
+    new THREE.MeshBasicMaterial({ color: 0xffffff })
   );
-  arenaRoot.add(m); return m;
-});
-const trailBuf = Array.from({ length: TRAIL }, () => new THREE.Vector3(-99, 0, 0));
-let trailHead = 0;
-function pushTrail(pos) {
-  trailBuf[trailHead].copy(pos);
-  trailHead = (trailHead + 1) % TRAIL;
-  for (let i = 0; i < TRAIL; i++) trailMeshes[i].position.copy(trailBuf[(trailHead + TRAIL - 1 - i) % TRAIL]);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: _glowTex, transparent: true, depthWrite: false }));
+  sprite.scale.set(0.30, 0.30, 1); mesh.add(sprite);
+  mesh.visible = false; arenaRoot.add(mesh);
+  const tMeshes = Array.from({ length: TRAIL }, (_, i) => {
+    const m = new THREE.Mesh(
+      new THREE.SphereGeometry(BALL_R * (1 - i / TRAIL) * 0.7, 6, 4),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: (1 - i / TRAIL) * 0.32, depthWrite: false })
+    );
+    arenaRoot.add(m); return m;
+  });
+  const tBuf = Array.from({ length: TRAIL }, () => new THREE.Vector3(-99, 0, 0));
+  let tHead = 0;
+  return {
+    pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+    state: 'idle', shooter: null, shooterPaddle: null,
+    mesh,
+    pushTrail(pos) {
+      tBuf[tHead].copy(pos); tHead = (tHead + 1) % TRAIL;
+      for (let i = 0; i < TRAIL; i++) tMeshes[i].position.copy(tBuf[(tHead + TRAIL - 1 - i) % TRAIL]);
+    },
+    clearTrail() {
+      for (let i = 0; i < TRAIL; i++) { tBuf[i].set(-99, 0, 0); tMeshes[i].position.set(-99, 0, 0); }
+    }
+  };
 }
 
 // ── Paddles — two per side ────────────────────────────────────────────────────
@@ -491,10 +501,8 @@ const scoreEl   = document.getElementById('score');
 const scoreP1El = document.getElementById('score-p1');
 const scoreP2El = document.getElementById('score-p2');
 
-const ball = { pos: new THREE.Vector3(0, MID_Y, AD * 0.5), vel: new THREE.Vector3() };
-let ballState         = 'idle';   // 'idle' | 'flying' | 'returning'
-let ballShooter       = null;     // p1 or p1b — whichever hand fired
-let ballShooterPaddle = null;     // paddle1 or paddle1b — hidden while ball is in flight
+// balls[0]=p1-right  balls[1]=p1b-left  balls[2]=p2-right  balls[3]=p2b-left
+const balls = Array.from({ length: 4 }, makeBallObject);
 const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false };
 const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false };
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
@@ -540,8 +548,7 @@ function scorePoint(scorer, pts = 1) {
   if (p1Score >= WIN_SCORE || p2Score >= WIN_SCORE) {
     endGame(p1Score >= WIN_SCORE ? 1 : 0);
   } else {
-    ballState = 'idle';
-    if (ballShooterPaddle) { ballShooterPaddle.visible = true; ballShooterPaddle = null; }
+    for (const b of balls) { b.state='idle'; if(b.shooterPaddle){b.shooterPaddle.visible=true;b.shooterPaddle=null;} b.clearTrail(); }
   }
 }
 
@@ -571,11 +578,11 @@ function serve() {
 }
 
 function serveAttract() {
-  ball.pos.set(0, AY + AH * 0.5, AD * 0.5);
-  for (let i = 0; i < TRAIL; i++) trailBuf[i].set(-99, 0, 0);
+  const b = balls[0];
+  b.pos.set(0, AY + AH * 0.5, AD * 0.5); b.clearTrail(); b.mesh.visible = true;
   const az = (Math.random() - 0.5) * 1.2, ay = (Math.random() - 0.5) * 0.6;
   const dir = Math.random() < 0.5 ? 1 : -1;
-  ball.vel.set(Math.sin(az) * 1.8, Math.sin(ay) * 1.8, dir * Math.cos(az) * 1.8);
+  b.vel.set(Math.sin(az) * 1.8, Math.sin(ay) * 1.8, dir * Math.cos(az) * 1.8);
 }
 
 function enterAttractMode(fromGame = false) {
@@ -601,7 +608,8 @@ function enterAttractMode(fromGame = false) {
 
 function endGame(loserIdx) {
   gameState = 'gameover';
-  ball.vel.set(0, 0, 0);
+  for (const b of balls) { b.state = 'idle'; if (b.shooterPaddle) { b.shooterPaddle.visible = true; b.shooterPaddle = null; } b.clearTrail(); }
+  balls[0].vel.set(0, 0, 0);
   setAllPaddlesVisible(false);
   winnerEl.textContent = loserIdx === 0 ? 'P2 WINS' : 'P1 WINS';
   gameoverEl.classList.add('visible');
@@ -627,8 +635,8 @@ function startGame() {
   }
   attractEl.classList.remove('visible');
   gameoverEl.classList.remove('visible');
-  ball.vel.set(0, 0, 0);
-  ballState = 'idle'; serving = false;
+  for (const b of balls) { b.vel.set(0,0,0); b.state='idle'; if(b.shooterPaddle){b.shooterPaddle.visible=true;b.shooterPaddle=null;} b.clearTrail(); }
+  serving = false;
   if (renderer.xr.isPresenting) {
     setAllPaddlesVisible(false);
     startArenaAnim(arenaRoot.position.clone(), arenaRoot.scale.x, arenaRoot.rotation.y,
@@ -708,15 +716,14 @@ function cpuMoveToward(paddle, tx, ty, dt) {
 }
 
 function updateCpu(dt) {
-  if (ball.vel.z <= 0) {
-    // Ball moving away — spread to defensive positions
-    const midY = AY + AH * 0.5;
-    cpuMoveToward(p2,   DEFENSIVE_SPREAD, midY, dt);   // right hand: centre-right
-    cpuMoveToward(p2b, -DEFENSIVE_SPREAD, midY, dt);   // left hand:  centre-left
+  const ref = balls[0]; // placeholder until CPU gets its own shoot mechanic
+  const midY = AY + AH * 0.5;
+  if (ref.vel.z <= 0) {
+    cpuMoveToward(p2,   DEFENSIVE_SPREAD, midY, dt);
+    cpuMoveToward(p2b, -DEFENSIVE_SPREAD, midY, dt);
   } else {
-    // Ball incoming — both hands converge on ball
-    cpuMoveToward(p2,  ball.pos.x + cpuOff.x,  ball.pos.y + cpuOff.y,  dt);
-    cpuMoveToward(p2b, ball.pos.x + cpuOff2.x, ball.pos.y + cpuOff2.y, dt);
+    cpuMoveToward(p2,  ref.pos.x + cpuOff.x,  ref.pos.y + cpuOff.y,  dt);
+    cpuMoveToward(p2b, ref.pos.x + cpuOff2.x, ref.pos.y + cpuOff2.y, dt);
   }
   clampPaddle(p2); clampPaddle(p2b);
   // Simulated head = midpoint of hands → drives P2 brick group
@@ -817,15 +824,15 @@ function updateXRPaddles(frame) {
 }
 
 // ── Shoot / return ────────────────────────────────────────────────────────────
-function shootBall(shooter, dir) {
-  if (ballState !== 'idle' || gameState !== 'playing') return;
-  ball.pos.set(shooter.x, shooter.y, PADDLE_INSET);
-  ball.vel.copy(dir).multiplyScalar(SHOOT_SPEED);
-  for (let i = 0; i < TRAIL; i++) trailBuf[i].set(-99, 0, 0);
-  ballState         = 'flying';
-  ballShooter       = shooter;
-  ballShooterPaddle = shooter === p1 ? paddle1 : paddle1b;
-  ballShooterPaddle.visible = false;
+function shootBall(b, shooter, paddleGroup, dir) {
+  if (b.state !== 'idle' || gameState !== 'playing') return;
+  b.pos.set(shooter.x, shooter.y, PADDLE_INSET);
+  b.vel.copy(dir).multiplyScalar(SHOOT_SPEED);
+  b.clearTrail();
+  b.state         = 'flying';
+  b.shooter       = shooter;
+  b.shooterPaddle = paddleGroup;
+  paddleGroup.visible = false;
   soundPaddle();
 }
 
@@ -844,21 +851,21 @@ function applyP2BrickEffect(idx) {
   else if (idx === 4) { p2.deleted  = true;  paddle2.visible  = false; }
 }
 
-function checkBrickHit(bricks, sideIdx, brickZ, velZSign) {
+function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
   const front = brickZ + (BRICK_D / 2 + BALL_R) * (-velZSign);
   const back  = brickZ + (BRICK_D / 2 + BALL_R) * ( velZSign);
   const inRange = velZSign < 0
-    ? (ball.pos.z <= front && ball.pos.z >= back)
-    : (ball.pos.z >= front && ball.pos.z <= back);
+    ? (b.pos.z <= front && b.pos.z >= back)
+    : (b.pos.z >= front && b.pos.z <= back);
   if (!inRange) return false;
 
   for (let i = 0; i < bricks.length; i++) {
     const brick = bricks[i];
     if (!brick.alive) continue;
-    if (Math.abs(ball.pos.x - brick.x) < BRICK_W / 2 + BALL_R &&
-        Math.abs(ball.pos.y - brick.y) < BRICK_H / 2 + BALL_R) {
-      ball.pos.z = front;
-      ball.vel.z = -ball.vel.z;
+    if (Math.abs(b.pos.x - brick.x) < BRICK_W / 2 + BALL_R &&
+        Math.abs(b.pos.y - brick.y) < BRICK_H / 2 + BALL_R) {
+      b.pos.z = front;
+      b.vel.z = -b.vel.z;
       wallFlash[sideIdx] = 1.0;
       soundBrick();
       triggerBounceRing(brick.x, brick.y, brickZ, 'z');
@@ -881,61 +888,59 @@ function checkBrickHit(bricks, sideIdx, brickZ, velZSign) {
 }
 
 function updateBall(dt) {
-  // Attract / gameover: autonomous ball bounces all walls for visuals
   if (gameState !== 'playing') {
-    ball.pos.addScaledVector(ball.vel, dt);
-    if (ball.pos.x < -AW / 2 + BALL_R) { ball.pos.x = -AW / 2 + BALL_R; ball.vel.x = Math.abs(ball.vel.x); triggerBounceRing(-AW / 2, ball.pos.y, ball.pos.z, 'x'); }
-    else if (ball.pos.x > AW / 2 - BALL_R) { ball.pos.x = AW / 2 - BALL_R; ball.vel.x = -Math.abs(ball.vel.x); triggerBounceRing(AW / 2, ball.pos.y, ball.pos.z, 'x'); }
-    if (ball.pos.y < AY + BALL_R) { ball.pos.y = AY + BALL_R; ball.vel.y = Math.abs(ball.vel.y); triggerBounceRing(ball.pos.x, AY, ball.pos.z, 'y'); }
-    else if (ball.pos.y > AY + AH - BALL_R) { ball.pos.y = AY + AH - BALL_R; ball.vel.y = -Math.abs(ball.vel.y); triggerBounceRing(ball.pos.x, AY + AH, ball.pos.z, 'y'); }
-    if (ball.vel.z < 0 && ball.pos.z < BALL_R) { ball.pos.z = BALL_R; ball.vel.z = Math.abs(ball.vel.z); triggerBounceRing(ball.pos.x, ball.pos.y, 0, 'z'); }
-    else if (ball.vel.z > 0 && ball.pos.z > AD - BALL_R) { ball.pos.z = AD - BALL_R; ball.vel.z = -Math.abs(ball.vel.z); triggerBounceRing(ball.pos.x, ball.pos.y, AD, 'z'); }
+    // Attract / gameover: only balls[0] bounces, others hidden
+    for (let i = 1; i < balls.length; i++) balls[i].mesh.visible = false;
+    const b = balls[0];
+    b.pos.addScaledVector(b.vel, dt);
+    if (b.pos.x < -AW/2+BALL_R) { b.pos.x=-AW/2+BALL_R; b.vel.x=Math.abs(b.vel.x); triggerBounceRing(-AW/2,b.pos.y,b.pos.z,'x'); }
+    else if (b.pos.x > AW/2-BALL_R) { b.pos.x=AW/2-BALL_R; b.vel.x=-Math.abs(b.vel.x); triggerBounceRing(AW/2,b.pos.y,b.pos.z,'x'); }
+    if (b.pos.y < AY+BALL_R) { b.pos.y=AY+BALL_R; b.vel.y=Math.abs(b.vel.y); triggerBounceRing(b.pos.x,AY,b.pos.z,'y'); }
+    else if (b.pos.y > AY+AH-BALL_R) { b.pos.y=AY+AH-BALL_R; b.vel.y=-Math.abs(b.vel.y); triggerBounceRing(b.pos.x,AY+AH,b.pos.z,'y'); }
+    if (b.vel.z<0 && b.pos.z<BALL_R) { b.pos.z=BALL_R; b.vel.z=Math.abs(b.vel.z); triggerBounceRing(b.pos.x,b.pos.y,0,'z'); }
+    else if (b.vel.z>0 && b.pos.z>AD-BALL_R) { b.pos.z=AD-BALL_R; b.vel.z=-Math.abs(b.vel.z); triggerBounceRing(b.pos.x,b.pos.y,AD,'z'); }
+    b.pushTrail(b.pos); b.mesh.position.copy(b.pos);
     return;
   }
 
-  // Playing: idle = ball not in flight
-  if (ballState === 'idle') return;
+  // Playing: each ball is independent
+  for (const b of balls) {
+    if (b.state === 'idle') { b.mesh.visible = false; b.clearTrail(); continue; }
 
-  // Returning: home toward shooter's paddle at RETURN_SPEED each frame
-  if (ballState === 'returning' && ballShooter) {
-    const dx = ballShooter.x - ball.pos.x;
-    const dy = ballShooter.y - ball.pos.y;
-    const dz = PADDLE_INSET  - ball.pos.z;
-    const d  = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (d < BALL_R * 3) {
-      ballState = 'idle';
-      if (ballShooterPaddle) { ballShooterPaddle.visible = true; ballShooterPaddle = null; }
-      soundPaddle(); return;
+    if (b.state === 'returning' && b.shooter) {
+      const dx = b.shooter.x - b.pos.x, dy = b.shooter.y - b.pos.y, dz = PADDLE_INSET - b.pos.z;
+      const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      if (d < BALL_R * 3) {
+        b.state = 'idle'; b.mesh.visible = false;
+        if (b.shooterPaddle) { b.shooterPaddle.visible = true; b.shooterPaddle = null; }
+        soundPaddle(); continue;
+      }
+      b.vel.set(dx/d*RETURN_SPEED, dy/d*RETURN_SPEED, dz/d*RETURN_SPEED);
     }
-    ball.vel.set(dx / d * RETURN_SPEED, dy / d * RETURN_SPEED, dz / d * RETURN_SPEED);
-  }
 
-  ball.pos.addScaledVector(ball.vel, dt);
+    b.pos.addScaledVector(b.vel, dt);
 
-  // Side walls — always bounce
-  if (ball.pos.x < -AW / 2 + BALL_R) { ball.pos.x = -AW / 2 + BALL_R; ball.vel.x = Math.abs(ball.vel.x); triggerBounceRing(-AW / 2, ball.pos.y, ball.pos.z, 'x'); }
-  else if (ball.pos.x > AW / 2 - BALL_R) { ball.pos.x = AW / 2 - BALL_R; ball.vel.x = -Math.abs(ball.vel.x); triggerBounceRing(AW / 2, ball.pos.y, ball.pos.z, 'x'); }
-  // Top/bottom walls — always bounce
-  if (ball.pos.y < AY + BALL_R) { ball.pos.y = AY + BALL_R; ball.vel.y = Math.abs(ball.vel.y); triggerBounceRing(ball.pos.x, AY, ball.pos.z, 'y'); }
-  else if (ball.pos.y > AY + AH - BALL_R) { ball.pos.y = AY + AH - BALL_R; ball.vel.y = -Math.abs(ball.vel.y); triggerBounceRing(ball.pos.x, AY + AH, ball.pos.z, 'y'); }
+    if (b.pos.x < -AW/2+BALL_R) { b.pos.x=-AW/2+BALL_R; b.vel.x=Math.abs(b.vel.x); triggerBounceRing(-AW/2,b.pos.y,b.pos.z,'x'); }
+    else if (b.pos.x > AW/2-BALL_R) { b.pos.x=AW/2-BALL_R; b.vel.x=-Math.abs(b.vel.x); triggerBounceRing(AW/2,b.pos.y,b.pos.z,'x'); }
+    if (b.pos.y < AY+BALL_R) { b.pos.y=AY+BALL_R; b.vel.y=Math.abs(b.vel.y); triggerBounceRing(b.pos.x,AY,b.pos.z,'y'); }
+    else if (b.pos.y > AY+AH-BALL_R) { b.pos.y=AY+AH-BALL_R; b.vel.y=-Math.abs(b.vel.y); triggerBounceRing(b.pos.x,AY+AH,b.pos.z,'y'); }
 
-  if (ballState === 'flying') {
-    // Back wall (P2 end) → return
-    if (ball.vel.z > 0 && ball.pos.z > AD - BALL_R) {
-      ball.pos.z = AD - BALL_R;
-      triggerBounceRing(ball.pos.x, ball.pos.y, AD, 'z');
-      ballState = 'returning'; soundBrick(); return;
+    if (b.state === 'flying') {
+      if (b.vel.z > 0 && b.pos.z > AD-BALL_R) {
+        b.pos.z=AD-BALL_R; triggerBounceRing(b.pos.x,b.pos.y,AD,'z');
+        b.state='returning'; soundBrick(); continue;
+      }
+      if (b.vel.z < 0 && b.pos.z < BALL_R) {
+        b.pos.z=BALL_R; triggerBounceRing(b.pos.x,b.pos.y,0,'z');
+        b.state='returning'; soundBrick(); continue;
+      }
+      if (b.vel.z > 0 && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { if (b.state!=='idle') b.state='returning'; continue; }
+      if (b.vel.z < 0 && checkBrickHit(b,p1Bricks,0,BRICK_Z1,-1)) { if (b.state!=='idle') b.state='returning'; continue; }
     }
-    // P1 back wall (ball ricocheted back past start) → return
-    if (ball.vel.z < 0 && ball.pos.z < BALL_R) {
-      ball.pos.z = BALL_R;
-      triggerBounceRing(ball.pos.x, ball.pos.y, 0, 'z');
-      ballState = 'returning'; soundBrick(); return;
-    }
-    // P2 bricks → return after destruction
-    if (ball.vel.z > 0 && checkBrickHit(p2Bricks, 1, BRICK_Z2, +1)) { ballState = 'returning'; return; }
-    // P1 bricks (ricochet) → return
-    if (ball.vel.z < 0 && checkBrickHit(p1Bricks, 0, BRICK_Z1, -1)) { ballState = 'returning'; return; }
+
+    b.mesh.visible = true;
+    b.pushTrail(b.pos);
+    b.mesh.position.copy(b.pos);
   }
 }
 
@@ -978,8 +983,8 @@ renderer.setAnimationLoop((time, frame) => {
   if (frame) {
     updateXRPaddles(frame);
     if (gameState === 'playing') {
-      if (p1.laserOn  && !p1.wasLaserOn)  shootBall(p1,  p1LaserDir);
-      if (p1b.laserOn && !p1b.wasLaserOn) shootBall(p1b, p1bLaserDir);
+      if (p1.laserOn  && !p1.wasLaserOn)  shootBall(balls[0], p1,  paddle1,  p1LaserDir);
+      if (p1b.laserOn && !p1b.wasLaserOn) shootBall(balls[1], p1b, paddle1b, p1bLaserDir);
     }
     p1.wasLaserOn  = p1.laserOn;
     p1b.wasLaserOn = p1b.laserOn;
@@ -1028,14 +1033,7 @@ renderer.setAnimationLoop((time, frame) => {
   for (const r of bounceRings) {
     if (r.flash > 0) { r.flash = Math.max(0, r.flash - dt / 0.4); r.fillMat.opacity = r.flash * 0.18; r.rimMat.opacity = r.flash * 0.7; }
   }
-  const ballActive = gameState !== 'playing' || ballState !== 'idle';
-  ballMesh.visible = ballActive;
-  if (ballActive) {
-    pushTrail(ball.pos);
-    ballMesh.position.copy(ball.pos);
-  } else {
-    for (let i = 0; i < TRAIL; i++) trailMeshes[i].position.set(-99, 0, 0);
-  }
+  // ball mesh/trail updates handled inside updateBall per-ball loop
   // Group origin is at bottom edge — rotation and scale both pivot from there
   paddle1.position.set(p1.x,   p1.y   - PADDLE_R, PADDLE_INSET);  paddle1.rotation.set(p1.tilt,  0, 0);  paddle1.scale.setScalar(p1.scale);
   paddle1b.position.set(p1b.x, p1b.y  - PADDLE_R, PADDLE_INSET);  paddle1b.rotation.set(p1b.tilt, 0, 0);  paddle1b.scale.setScalar(p1b.scale);
