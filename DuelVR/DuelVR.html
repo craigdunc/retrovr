@@ -709,9 +709,11 @@ renderer.xr.addEventListener('sessionstart', () => {
   vrLogoMesh.visible = true; vrStartMesh.visible = true;
   vrScoreMesh.visible = true;
   vrScoreMesh.position.y = SCORE_ATTRACT_Y; vrScoreTargetY = SCORE_ATTRACT_Y;
+  startCalib();
   xrSession.addEventListener('selectstart', () => {
     if (audioCtx.state === 'suspended') audioCtx.resume();
-    if ((gameState === 'attract' || gameState === 'gameover') && arenaAnimTime < 0) startGame();
+    if (dismissCalib()) return;
+    if ((gameState === 'attract' || gameState === 'gameover') && arenaAnimTime < 0 && !calibPhase) startGame();
   });
 });
 
@@ -776,6 +778,106 @@ function updateXRPaddles(frame) {
     target.targetY = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
     target.targetTilt = tilt;
   }
+}
+
+// ── Calibration overlay ───────────────────────────────────────────────────────
+const calibCanvas = document.createElement('canvas');
+calibCanvas.width = 512; calibCanvas.height = 320;
+const calibCtx  = calibCanvas.getContext('2d');
+const calibTex  = new THREE.CanvasTexture(calibCanvas);
+const calibMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.9, 0.9 * 320 / 512),
+  new THREE.MeshBasicMaterial({ map: calibTex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
+);
+calibMesh.position.set(0, 1.55, 0.72); calibMesh.rotation.y = Math.PI; calibMesh.visible = false;
+scene.add(calibMesh);
+
+const CALIB_SEQ = ['up3','up2','up1','upNow','out3','out2','out1','outNow','results'];
+let calibPhase = null, calibTimer = 0;
+let calibVertR = null, calibVertL = null, calibHorizR = null, calibHorizL = null;
+
+function startCalib() {
+  calibPhase = 'up3'; calibTimer = 0;
+  calibVertR = calibVertL = calibHorizR = calibHorizL = null;
+  calibMesh.visible = true;
+  drawCalib();
+}
+
+function fmtQ(q) {
+  if (!q) return ' ?.??  ?.??  ?.??  ?.??';
+  return [q.x, q.y, q.z, q.w].map(v => (v >= 0 ? ' ' : '') + v.toFixed(2)).join('  ');
+}
+
+function drawCalib() {
+  const W = 512, H = 320;
+  calibCtx.clearRect(0, 0, W, H);
+  calibCtx.fillStyle = 'rgba(0,0,20,0.9)'; calibCtx.fillRect(0, 0, W, H);
+
+  if (calibPhase === 'results') {
+    calibCtx.font = 'bold 20px monospace'; calibCtx.textAlign = 'center'; calibCtx.textBaseline = 'top';
+    calibCtx.fillStyle = '#ffffff'; calibCtx.fillText('VERTICAL  (hands up)', W / 2, 12);
+    calibCtx.fillStyle = '#88ffcc'; calibCtx.textAlign = 'left';
+    calibCtx.fillText('R  x  y  z  w', 20, 44);
+    calibCtx.fillText(fmtQ(calibVertR), 20, 68);
+    calibCtx.fillText('L  x  y  z  w', 20, 100);
+    calibCtx.fillText(fmtQ(calibVertL), 20, 124);
+    calibCtx.fillStyle = '#ffffff'; calibCtx.textAlign = 'center';
+    calibCtx.fillText('HORIZONTAL  (hands out)', W / 2, 162);
+    calibCtx.fillStyle = '#ffcc88'; calibCtx.textAlign = 'left';
+    calibCtx.fillText('R  x  y  z  w', 20, 194);
+    calibCtx.fillText(fmtQ(calibHorizR), 20, 218);
+    calibCtx.fillText('L  x  y  z  w', 20, 250);
+    calibCtx.fillText(fmtQ(calibHorizL), 20, 274);
+    calibCtx.fillStyle = '#555555'; calibCtx.textAlign = 'center'; calibCtx.font = '16px monospace';
+    calibCtx.fillText('press trigger to dismiss', W / 2, 302);
+  } else {
+    const isNow = calibPhase === 'upNow' || calibPhase === 'outNow';
+    const label = calibPhase.startsWith('up') ? 'Hands up!' : 'Hands out!';
+    const tick  = isNow ? 'NOW' : calibPhase.slice(-1);
+    calibCtx.font = 'bold 36px monospace'; calibCtx.textAlign = 'center'; calibCtx.textBaseline = 'middle';
+    calibCtx.fillStyle = '#00ffcc';
+    calibCtx.fillText(label, W / 2, H * 0.38);
+    calibCtx.font = 'bold 100px monospace';
+    calibCtx.fillStyle = isNow ? '#ffff00' : '#ffffff';
+    calibCtx.fillText(tick, W / 2, H * 0.68);
+  }
+  calibTex.needsUpdate = true;
+}
+
+function captureCalibFrame(type, frame) {
+  if (!frame || !xrSession) return;
+  const rs = renderer.xr.getReferenceSpace(); if (!rs) return;
+  for (const src of xrSession.inputSources) {
+    if (!src.hand) continue;
+    const wrist = src.hand.get('wrist'); if (!wrist) continue;
+    const pose = frame.getJointPose(wrist, rs); if (!pose) continue;
+    const o = pose.transform.orientation;
+    const q = { x: +o.x.toFixed(2), y: +o.y.toFixed(2), z: +o.z.toFixed(2), w: +o.w.toFixed(2) };
+    if (type === 'vert')  { if (src.handedness === 'right') calibVertR  = q; else calibVertL  = q; }
+    else                  { if (src.handedness === 'right') calibHorizR = q; else calibHorizL = q; }
+  }
+}
+
+function updateCalib(dt, frame) {
+  if (!calibPhase) return;
+  if (calibPhase === 'upNow' || calibPhase === 'outNow') {
+    captureCalibFrame(calibPhase === 'upNow' ? 'vert' : 'horiz', frame);
+  }
+  calibTimer += dt;
+  const threshold = calibPhase === 'results' ? 30 : 1.0;
+  if (calibTimer >= threshold) {
+    calibTimer = 0;
+    if (calibPhase === 'results') { calibPhase = null; calibMesh.visible = false; return; }
+    const next = CALIB_SEQ[CALIB_SEQ.indexOf(calibPhase) + 1];
+    calibPhase = next ?? null;
+    if (calibPhase === null) { calibMesh.visible = false; return; }
+    drawCalib();
+  }
+}
+
+function dismissCalib() {
+  if (calibPhase !== 'results') return false;
+  calibPhase = null; calibMesh.visible = false; return true;
 }
 
 // ── Ball physics ──────────────────────────────────────────────────────────────
@@ -971,7 +1073,7 @@ const clock = new THREE.Clock();
 renderer.setAnimationLoop((time, frame) => {
   const dt = Math.min(clock.getDelta(), 0.05);
 
-  if (frame) updateXRPaddles(frame);
+  if (frame) { updateCalib(dt, frame); updateXRPaddles(frame); }
 
   // Lerp P1 paddles toward targets (respects lerpSpeed penalty from brick hits)
   if (!p1.deleted) {
