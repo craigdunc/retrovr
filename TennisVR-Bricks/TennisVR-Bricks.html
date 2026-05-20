@@ -130,12 +130,12 @@ const ARENA_CY     = AY + AH * 0.5;
 
 // Bricks: 5 per side, at back of each player's half
 const BRICK_COUNT = 5;
-const BRICK_W = 0.22;
+const BRICK_W = (AW / 2) / BRICK_COUNT;  // 5 bricks = half-arena width
 const BRICK_H = 0.12;
 const BRICK_D = 0.08;           // thick enough to prevent tunnelling at max speed
 const BRICK_Y = AY + AH * 0.5; // vertically centred in arena
-const BRICK_Z1 = 0.08;          // P1's bricks, near z=0 wall
-const BRICK_Z2 = AD - 0.08;     // P2's bricks, near z=AD wall
+const BRICK_Z1 = -BRICK_D / 2;      // P1's bricks flush with z=0 wall (face facing P2 at z=0)
+const BRICK_Z2 = AD + BRICK_D / 2;  // P2's bricks flush with z=AD wall (face facing P1 at z=AD)
 
 const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.01, 60);
 camera.position.set(2.6, 3.4, -0.7);
@@ -298,27 +298,51 @@ const paddleFlash = [0, 0, 0, 0];
 
 // ── Bricks ────────────────────────────────────────────────────────────────────
 function makeBricks(brickZ, fillColor, edgeColor) {
-  const spacing = AW / BRICK_COUNT;
+  const groupW = BRICK_W * BRICK_COUNT;
   return Array.from({ length: BRICK_COUNT }, (_, i) => {
-    const bx = -AW / 2 + spacing * (i + 0.5);
+    const localX = -groupW / 2 + BRICK_W / 2 + BRICK_W * i;
     const geo  = new THREE.BoxGeometry(BRICK_W, BRICK_H, BRICK_D);
-    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: fillColor }));
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.18 }));
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: edgeColor }));
-    mesh.position.set(bx, BRICK_Y, brickZ);
-    edges.position.set(bx, BRICK_Y, brickZ);
+    mesh.position.set(localX, BRICK_Y, brickZ);
+    edges.position.set(localX, BRICK_Y, brickZ);
     arenaRoot.add(mesh, edges);
-    return { x: bx, y: BRICK_Y, mesh, edges, alive: true };
+    return { localX, x: localX, y: BRICK_Y, mesh, edges, alive: true };
   });
 }
 
-const p1Bricks = makeBricks(BRICK_Z1, 0x2255bb, 0x113388); // blue — P1's bricks (near P1's end)
-const p2Bricks = makeBricks(BRICK_Z2, 0xbb2233, 0x881122); // red  — P2's bricks (near P2's end)
+const p1Bricks = makeBricks(BRICK_Z1, 0x2255bb, 0x44aaff); // blue fill, bright blue edges
+const p2Bricks = makeBricks(BRICK_Z2, 0xbb2233, 0xff4466); // red fill, bright red edges
 let brickCounts = [BRICK_COUNT, BRICK_COUNT];
+let brickGroupX = 0;
 
 function resetBricks() {
   brickCounts[0] = brickCounts[1] = BRICK_COUNT;
   for (const b of p1Bricks) { b.alive = true; b.mesh.visible = true; b.edges.visible = true; }
   for (const b of p2Bricks) { b.alive = true; b.mesh.visible = true; b.edges.visible = true; }
+  updateBrickGroupX(0);
+}
+
+function updateBrickGroupX(targetX) {
+  let leftIdx = BRICK_COUNT, rightIdx = -1;
+  for (let i = 0; i < BRICK_COUNT; i++) {
+    if (p1Bricks[i].alive || p2Bricks[i].alive) {
+      if (i < leftIdx) leftIdx = i;
+      if (i > rightIdx) rightIdx = i;
+    }
+  }
+  if (rightIdx < 0) { brickGroupX = targetX; return; }
+  const leftLocalX  = p1Bricks[leftIdx].localX;
+  const rightLocalX = p1Bricks[rightIdx].localX;
+  const minX = -AW / 2 - leftLocalX  + BRICK_W / 2;
+  const maxX =  AW / 2 - rightLocalX - BRICK_W / 2;
+  brickGroupX = Math.max(minX, Math.min(maxX, targetX));
+  for (let i = 0; i < BRICK_COUNT; i++) {
+    const wx = brickGroupX + p1Bricks[i].localX;
+    p1Bricks[i].x = wx; p1Bricks[i].mesh.position.x = wx; p1Bricks[i].edges.position.x = wx;
+    p2Bricks[i].x = wx; p2Bricks[i].mesh.position.x = wx; p2Bricks[i].edges.position.x = wx;
+  }
+  updateVRBricks();
 }
 
 // ── VR brick-health panel ─────────────────────────────────────────────────────
@@ -832,6 +856,9 @@ renderer.setAnimationLoop((time, frame) => {
   if (frame) updateXRPaddles(frame);
   updateCpu(dt);
   updateBall(dt);
+
+  const headX = renderer.xr.isPresenting ? renderer.xr.getCamera().position.x : camera.position.x;
+  updateBrickGroupX(headX);
 
   if (vrStartMesh.visible) vrStartMat.opacity = (time % 1200 < 600) ? 1.0 : 0.0;
 
