@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TennisVR Bricks</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0b0b14; overflow: hidden; }
+    @keyframes blink { 50% { opacity: 0; } }
+    #attract {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      pointer-events: none; opacity: 0; transition: opacity 0.6s;
+    }
+    #attract.visible { opacity: 1; }
+    #attract-logo  { width: 52%; max-width: 680px; }
+    #attract-start { width: 18%; max-width: 240px; margin-top: 3.5vh;
+                     animation: blink 1.2s step-end infinite; }
+    #gameover {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      pointer-events: none; opacity: 0; transition: opacity 0.5s;
+    }
+    #gameover.visible { opacity: 1; }
+    #winner {
+      color: #fff; font-family: 'Courier New', monospace; font-size: 52px;
+      font-weight: bold; letter-spacing: 0.2em;
+    }
+    #gameover-start {
+      color: #aaa; font-family: 'Courier New', monospace; font-size: 14px;
+      margin-top: 24px; letter-spacing: 0.15em; animation: blink 1.2s step-end infinite;
+    }
+    #score {
+      position: absolute; top: 20px; left: 0; width: 100%; text-align: center;
+      color: #fff; font-family: 'Courier New', monospace; font-size: 48px;
+      font-weight: bold; letter-spacing: 0.15em; pointer-events: none;
+      opacity: 0; transition: opacity 0.4s;
+    }
+    #score.visible { opacity: 1; }
+    #score-p1 { color: #44aaff; }
+    #score-p2 { color: #ff4466; }
+  </style>
+</head>
+<body>
+<div id="score"><span id="score-p1">0</span> <span style="color:#fff"> — </span> <span id="score-p2">0</span></div>
+<div id="attract">
+  <img id="attract-logo"  src="TennisVR.png" alt="TennisVR">
+  <img id="attract-start" src="Start.png"    alt="START">
+</div>
+<div id="gameover">
+  <div id="winner">P1 WINS</div>
+  <div id="gameover-start">PRESS ANY KEY TO PLAY AGAIN</div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.158.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ── Renderer ──────────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+// VR + AR buttons
+let isARSession = false;
+(async () => {
+  function makeBtn(label, offsetX) {
+    const b = document.createElement('button');
+    b.style.cssText = `position:absolute;bottom:20px;left:calc(50% + ${offsetX}px);width:100px;` +
+      'padding:12px 6px;background:rgba(0,0,0,0.1);color:#fff;font-family:sans-serif;' +
+      'font-size:13px;border:1px solid #fff;z-index:999;cursor:pointer;opacity:0.5;';
+    b.textContent = label;
+    document.body.appendChild(b);
+    b.addEventListener('mouseenter', () => { b.style.opacity = '1'; });
+    b.addEventListener('mouseleave', () => { b.style.opacity = '0.5'; });
+    return b;
+  }
+  const vrBtn = makeBtn('ENTER VR', -110);
+  const arBtn = makeBtn('ENTER AR',   10);
+  if (!('xr' in navigator)) { vrBtn.textContent = 'NO WEBXR'; arBtn.textContent = 'NO WEBXR'; return; }
+  const [vrOk, arOk] = await Promise.all([
+    navigator.xr.isSessionSupported('immersive-vr').catch(() => false),
+    navigator.xr.isSessionSupported('immersive-ar').catch(() => false),
+  ]);
+  vrBtn.textContent = vrOk ? 'ENTER VR' : 'VR N/A';
+  arBtn.textContent = arOk ? 'ENTER AR' : 'AR N/A';
+  let xrCurrentSession = null;
+  async function enterXR(type, btn) {
+    if (xrCurrentSession) { xrCurrentSession.end(); return; }
+    try {
+      const session = await navigator.xr.requestSession(type, { requiredFeatures: ['local-floor'] });
+      await renderer.xr.setSession(session);
+      isARSession = type === 'immersive-ar';
+      scene.background = isARSession ? null : sceneBg;
+      gridHelper.visible = !isARSession;
+      btn.textContent = isARSession ? 'EXIT AR' : 'EXIT VR';
+      xrCurrentSession = session;
+      session.addEventListener('end', () => {
+        xrCurrentSession = null; isARSession = false;
+        scene.background = sceneBg; gridHelper.visible = true;
+        btn.textContent = type === 'immersive-vr' ? 'ENTER VR' : 'ENTER AR';
+      });
+    } catch (e) {
+      btn.textContent = e.name || 'ERROR';
+      setTimeout(() => { btn.textContent = type === 'immersive-vr' ? 'ENTER VR' : 'ENTER AR'; }, 3000);
+    }
+  }
+  vrBtn.addEventListener('click', () => enterXR('immersive-vr', vrBtn));
+  vrBtn.addEventListener('touchend', e => { e.preventDefault(); enterXR('immersive-vr', vrBtn); });
+  arBtn.addEventListener('click', () => enterXR('immersive-ar', arBtn));
+  arBtn.addEventListener('touchend', e => { e.preventDefault(); enterXR('immersive-ar', arBtn); });
+})();
+
+const scene = new THREE.Scene();
+const sceneBg = new THREE.Color(0x0b0b14);
+scene.background = sceneBg;
+
+const arenaRoot = new THREE.Group();
+scene.add(arenaRoot);
+
+// ── Arena constants ───────────────────────────────────────────────────────────
+const AW = 1.525;
+const AH = 0.762;
+const AD = 2.74;
+const AY = 0.76;
+const BALL_R       = 0.024;
+const PADDLE_R     = 0.080;
+const PADDLE_INSET = 0.15;
+const P1_SENS      = 1.8;
+const ARENA_CY     = AY + AH * 0.5;
+
+// Bricks: 5 per side, at back of each player's half
+const BRICK_COUNT = 5;
+const BRICK_W = (AW / 2) / BRICK_COUNT;  // 5 bricks = half-arena width
+const BRICK_H = 0.12;
+const BRICK_D = 0.08;           // thick enough to prevent tunnelling at max speed
+const BRICK_Y = AY + AH * 0.5; // vertically centred in arena
+const BRICK_Z1 = -BRICK_D / 2;      // P1's bricks flush with z=0 wall (face facing P2 at z=0)
+const BRICK_Z2 = AD + BRICK_D / 2;  // P2's bricks flush with z=AD wall (face facing P1 at z=AD)
+
+const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.01, 60);
+camera.position.set(2.6, 3.4, -0.7);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, AY + AH / 2, AD / 2);
+controls.enableDamping = true;
+controls.dampingFactor = 0.07;
+controls.minDistance = 0.8;
+controls.maxDistance = 10;
+controls.update();
+
+// ── Desktop camera animation ──────────────────────────────────────────────────
+const CAM_INTRO_POS    = new THREE.Vector3(2.6, 3.4, -0.7);
+const CAM_INTRO_TARGET = new THREE.Vector3(0, AY + AH / 2, AD / 2);
+const CAM_GAME_POS     = new THREE.Vector3(0, AY + AH * 0.5, -0.5);
+const CAM_GAME_TARGET  = new THREE.Vector3(0, AY + AH * 0.45, AD * 0.35);
+const CAM_ANIM_DURATION = 1.5;
+let camAnimTime = -1;
+let camAtGame   = false;
+let gameState   = 'attract';
+
+const _camFrom = new THREE.Vector3(), _camFromT = new THREE.Vector3();
+const _camTo   = new THREE.Vector3(), _camToT   = new THREE.Vector3();
+let _camOnDone = null;
+
+function startCamAnim(fromPos, fromTgt, toPos, toTgt, onDone) {
+  _camFrom.copy(fromPos); _camFromT.copy(fromTgt);
+  _camTo.copy(toPos);     _camToT.copy(toTgt);
+  camAnimTime = 0; _camOnDone = onDone || null;
+  controls.enabled = false;
+}
+
+// ── VR arena animation ────────────────────────────────────────────────────────
+const ARENA_MINI_POS    = new THREE.Vector3(0, 0.75, 0.6);
+const ARENA_MINI_SCALE  = 0.18;
+const ARENA_MINI_ROT_Y  = Math.PI / 4;
+const ARENA_FULL_POS    = new THREE.Vector3(0, 0, 0);
+const ARENA_FULL_SCALE  = 1.0;
+const ARENA_FULL_ROT_Y  = 0;
+const ARENA_ANIM_DURATION = 1.5;
+let arenaAnimTime = -1, arenaAnimFromSc = 1, arenaAnimToSc = 1;
+let arenaAnimFromRot = 0, arenaAnimToRot = 0;
+const _arenaFromPos = new THREE.Vector3(), _arenaToPos = new THREE.Vector3();
+let _arenaOnDone = null;
+
+function startArenaAnim(fromPos, fromSc, fromRotY, toPos, toSc, toRotY, onDone) {
+  _arenaFromPos.copy(fromPos); arenaAnimFromSc = fromSc; arenaAnimFromRot = fromRotY;
+  _arenaToPos.copy(toPos);     arenaAnimToSc   = toSc;   arenaAnimToRot   = toRotY;
+  arenaAnimTime = 0; _arenaOnDone = onDone || null;
+}
+
+// ── Arena geometry ────────────────────────────────────────────────────────────
+function addTableFace(y, normalUp) {
+  const surf = new THREE.Mesh(
+    new THREE.PlaneGeometry(AW, AD),
+    new THREE.MeshBasicMaterial({ color: 0x1d6b28, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+  );
+  surf.rotation.x = -Math.PI / 2;
+  surf.position.set(0, y, AD / 2);
+  arenaRoot.add(surf);
+  const LH = 0.002, LW = 0.012;
+  const ly = y + (normalUp ? LH / 2 : -LH / 2);
+  const wm = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const addLine = (w, d, x, z) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, LH, d), wm);
+    m.position.set(x, ly, z); arenaRoot.add(m);
+  };
+  addLine(LW, AD + LW, -AW / 2, AD / 2); addLine(LW, AD + LW, AW / 2, AD / 2);
+  addLine(AW + LW, LW, 0, 0);  addLine(AW + LW, LW, 0, AD);
+  addLine(AW, LW, 0, AD / 2);  addLine(LW, AD, 0, AD / 2);
+}
+addTableFace(AY, true);
+addTableFace(AY + AH, false);
+
+function addSideWall(x) {
+  const sign = x > 0 ? 1 : -1;
+  const geo  = new THREE.PlaneGeometry(AD, AH);
+  const fill = new THREE.Mesh(geo,
+    new THREE.MeshBasicMaterial({ color: 0x1d6b28, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+  );
+  fill.rotation.y = -sign * Math.PI / 2;
+  fill.position.set(x, AY + AH / 2, AD / 2);
+  arenaRoot.add(fill);
+  const edgeLines = new THREE.LineSegments(
+    new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x2a9436 })
+  );
+  edgeLines.rotation.y = -sign * Math.PI / 2;
+  edgeLines.position.set(x, AY + AH / 2, AD / 2);
+  arenaRoot.add(edgeLines);
+  const cl = new THREE.Mesh(
+    new THREE.BoxGeometry(0.002, AH, 0.012),
+    new THREE.MeshBasicMaterial({ color: 0xffffff })
+  );
+  cl.position.set(x + (sign > 0 ? -0.002 : 0.002), AY + AH / 2, AD / 2);
+  arenaRoot.add(cl);
+}
+addSideWall(-AW / 2);
+addSideWall( AW / 2);
+
+// End-wall flash (repurposed: flashes when a brick is hit on that side)
+const p1WallMat = new THREE.MeshBasicMaterial({ color: 0x3377dd, transparent: true, opacity: 0, side: THREE.DoubleSide });
+const p2WallMat = new THREE.MeshBasicMaterial({ color: 0xdd3355, transparent: true, opacity: 0, side: THREE.DoubleSide });
+const wallFlash = [0, 0];
+{
+  const geo = new THREE.PlaneGeometry(AW, AH);
+  const w1  = new THREE.Mesh(geo, p1WallMat); w1.position.set(0, AY + AH / 2, 0); arenaRoot.add(w1);
+  const w2  = new THREE.Mesh(geo, p2WallMat); w2.position.set(0, AY + AH / 2, AD); arenaRoot.add(w2);
+}
+
+const gridHelper = new THREE.GridHelper(12, 30, 0x141420, 0x111118);
+scene.add(gridHelper);
+
+// ── Ball ──────────────────────────────────────────────────────────────────────
+const ballMesh = new THREE.Mesh(
+  new THREE.SphereGeometry(BALL_R, 14, 10),
+  new THREE.MeshBasicMaterial({ color: 0xffffff })
+);
+arenaRoot.add(ballMesh);
+{
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.3, 'rgba(255,255,255,0.5)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false }));
+  sprite.scale.set(0.30, 0.30, 1); ballMesh.add(sprite);
+}
+
+const TRAIL = 22;
+const trailMeshes = Array.from({ length: TRAIL }, (_, i) => {
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(BALL_R * (1 - i / TRAIL) * 0.7, 6, 4),
+    new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: (1 - i / TRAIL) * 0.32, depthWrite: false })
+  );
+  arenaRoot.add(m); return m;
+});
+const trailBuf = Array.from({ length: TRAIL }, () => new THREE.Vector3(-99, 0, 0));
+let trailHead = 0;
+function pushTrail(pos) {
+  trailBuf[trailHead].copy(pos);
+  trailHead = (trailHead + 1) % TRAIL;
+  for (let i = 0; i < TRAIL; i++) trailMeshes[i].position.copy(trailBuf[(trailHead + TRAIL - 1 - i) % TRAIL]);
+}
+
+// ── Paddles — two per side ────────────────────────────────────────────────────
+function makePaddle(faceColor, rimColor) {
+  const g = new THREE.Group();
+  const faceMat = new THREE.MeshBasicMaterial({ color: faceColor, transparent: true, opacity: 0.35, side: THREE.DoubleSide });
+  g.add(new THREE.Mesh(new THREE.CircleGeometry(PADDLE_R, 40), faceMat));
+  g.add(new THREE.Mesh(new THREE.TorusGeometry(PADDLE_R, 0.005, 8, 40), new THREE.MeshBasicMaterial({ color: rimColor })));
+  return { group: g, faceMat };
+}
+const { group: paddle1,  faceMat: p1FaceMat  } = makePaddle(0x3377dd, 0x88bbff);
+const { group: paddle1b, faceMat: p1bFaceMat } = makePaddle(0x22aacc, 0x66ddff);
+const { group: paddle2,  faceMat: p2FaceMat  } = makePaddle(0xdd3355, 0xff88aa);
+const { group: paddle2b, faceMat: p2bFaceMat } = makePaddle(0xdd7722, 0xffbb66);
+arenaRoot.add(paddle1, paddle1b, paddle2, paddle2b);
+const paddleFlash = [0, 0, 0, 0];
+
+// ── Bricks ────────────────────────────────────────────────────────────────────
+function makeBricks(brickZ, fillColor, edgeColor) {
+  const groupW = BRICK_W * BRICK_COUNT;
+  return Array.from({ length: BRICK_COUNT }, (_, i) => {
+    const localX  = -groupW / 2 + BRICK_W / 2 + BRICK_W * i;
+    const geo     = new THREE.BoxGeometry(BRICK_W, BRICK_H, BRICK_D);
+    const fillMat = new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.18 });
+    const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor });
+    const mesh  = new THREE.Mesh(geo, fillMat);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
+    mesh.position.set(localX, BRICK_Y, brickZ);
+    edges.position.set(localX, BRICK_Y, brickZ);
+    arenaRoot.add(mesh, edges);
+    return { localX, x: localX, y: BRICK_Y, mesh, edges, fillMat, edgeMat, alive: true, state: 'normal' };
+  });
+}
+
+const p1Bricks = makeBricks(BRICK_Z1, 0x2255bb, 0x44aaff);
+const p2Bricks = makeBricks(BRICK_Z2, 0xbb2233, 0xff4466);
+// Centre brick (index 2) is the life brick — starts white for both sides
+p1Bricks[2].state = 'white'; p1Bricks[2].fillMat.color.setHex(0xffffff); p1Bricks[2].edgeMat.color.setHex(0xffffff);
+p2Bricks[2].state = 'white'; p2Bricks[2].fillMat.color.setHex(0xffffff); p2Bricks[2].edgeMat.color.setHex(0xffffff);
+
+let brickCounts = [BRICK_COUNT, BRICK_COUNT];
+const brickGroupX = [0, 0];
+
+function resetBricks() {
+  brickCounts[0] = brickCounts[1] = BRICK_COUNT;
+  for (let i = 0; i < BRICK_COUNT; i++) {
+    const b1 = p1Bricks[i];
+    b1.alive = true; b1.mesh.visible = true; b1.edges.visible = true;
+    if (i === 2) {
+      b1.state = 'white'; b1.fillMat.color.setHex(0xffffff); b1.edgeMat.color.setHex(0xffffff);
+    }
+    const b2 = p2Bricks[i];
+    b2.alive = true; b2.mesh.visible = true; b2.edges.visible = true;
+    if (i === 2) {
+      b2.state = 'white'; b2.fillMat.color.setHex(0xffffff); b2.edgeMat.color.setHex(0xffffff);
+    }
+  }
+  updateBrickGroupX(0, 0);
+  updateBrickGroupX(1, 0);
+}
+
+function updateBrickGroupX(side, targetX) {
+  const bricks = side === 0 ? p1Bricks : p2Bricks;
+  let leftIdx = BRICK_COUNT, rightIdx = -1;
+  for (let i = 0; i < BRICK_COUNT; i++) {
+    if (bricks[i].alive) {
+      if (i < leftIdx) leftIdx = i;
+      if (i > rightIdx) rightIdx = i;
+    }
+  }
+  if (rightIdx < 0) { brickGroupX[side] = targetX; return; }
+  const leftLocalX  = bricks[leftIdx].localX;
+  const rightLocalX = bricks[rightIdx].localX;
+  const minX = -AW / 2 - leftLocalX  + BRICK_W / 2;
+  const maxX =  AW / 2 - rightLocalX - BRICK_W / 2;
+  brickGroupX[side] = Math.max(minX, Math.min(maxX, targetX));
+  for (let i = 0; i < BRICK_COUNT; i++) {
+    const wx = brickGroupX[side] + bricks[i].localX;
+    bricks[i].x = wx; bricks[i].mesh.position.x = wx; bricks[i].edges.position.x = wx;
+  }
+  updateVRBricks();
+}
+
+// ── VR brick-health panel ─────────────────────────────────────────────────────
+const vrScoreCanvas = document.createElement('canvas');
+vrScoreCanvas.width = 512; vrScoreCanvas.height = 120;
+const vrScoreCtx = vrScoreCanvas.getContext('2d');
+const vrScoreTex = new THREE.CanvasTexture(vrScoreCanvas);
+const vrScoreMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.55, 0.13),
+  new THREE.MeshBasicMaterial({ map: vrScoreTex, transparent: true, depthWrite: false, side: THREE.DoubleSide })
+);
+const SCORE_GAME_Y    = AY + AH - 0.07;
+const SCORE_ATTRACT_Y = AY + AH + 0.28;
+let vrScoreTargetY = SCORE_ATTRACT_Y;
+vrScoreMesh.position.set(0, SCORE_ATTRACT_Y, AD * 0.5);
+vrScoreMesh.rotation.set(0, Math.PI, 0);
+vrScoreMesh.visible = false;
+arenaRoot.add(vrScoreMesh);
+
+function updateVRBricks() {
+  const W = vrScoreCanvas.width, H = vrScoreCanvas.height;
+  const ctx = vrScoreCtx;
+  ctx.clearRect(0, 0, W, H);
+  ctx.font = 'bold 56px monospace'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#44aaff'; ctx.textAlign = 'right';  ctx.fillText(p1Score, W * 0.44, H / 2);
+  ctx.fillStyle = '#888';    ctx.textAlign = 'center'; ctx.fillText('—', W * 0.5, H / 2);
+  ctx.fillStyle = '#ff4466'; ctx.textAlign = 'left';   ctx.fillText(p2Score, W * 0.56, H / 2);
+  vrScoreTex.needsUpdate = true;
+}
+
+// ── VR attract overlay ────────────────────────────────────────────────────────
+const vrTexLoader = new THREE.TextureLoader();
+const vrLogoMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.85, 0.85 / 3.52),
+  new THREE.MeshBasicMaterial({ map: vrTexLoader.load('TennisVR.png'), transparent: true, depthWrite: false })
+);
+vrLogoMesh.position.set(0, 1.62, 0.75); vrLogoMesh.rotation.y = Math.PI; vrLogoMesh.visible = false;
+scene.add(vrLogoMesh);
+
+const vrStartMat = new THREE.MeshBasicMaterial({ map: vrTexLoader.load('Start.png'), transparent: true, depthWrite: false });
+const vrStartMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.44 / 2.50), vrStartMat);
+vrStartMesh.position.set(0, 1.25, 0.75); vrStartMesh.rotation.y = Math.PI; vrStartMesh.visible = false;
+scene.add(vrStartMesh);
+
+// ── Miss rings ────────────────────────────────────────────────────────────────
+function makeMissRing(color, z) {
+  const g = new THREE.Group();
+  const fillMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
+  const rimMat  = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false });
+  g.add(new THREE.Mesh(new THREE.CircleGeometry(BALL_R, 24), fillMat));
+  g.add(new THREE.Mesh(new THREE.TorusGeometry(BALL_R, 0.004, 8, 24), rimMat));
+  g.position.z = z; arenaRoot.add(g);
+  return { group: g, fillMat, rimMat };
+}
+const miss1 = makeMissRing(0xffffff, PADDLE_INSET);
+const miss2 = makeMissRing(0xffffff, AD - PADDLE_INSET);
+const missFlash    = [0, 0];
+const missDetected = [false, false];
+
+// ── Bounce rings ──────────────────────────────────────────────────────────────
+const BOUNCE_POOL = 8;
+const bounceRings = Array.from({ length: BOUNCE_POOL }, () => {
+  const g = new THREE.Group();
+  const fillMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
+  const rimMat  = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+  g.add(new THREE.Mesh(new THREE.CircleGeometry(BALL_R * 0.55, 24), fillMat));
+  g.add(new THREE.Mesh(new THREE.TorusGeometry(BALL_R * 0.55, 0.003, 8, 24), rimMat));
+  arenaRoot.add(g);
+  return { group: g, fillMat, rimMat, flash: 0 };
+});
+let bounceRingIdx = 0;
+
+function triggerBounceRing(x, y, z, axis) {
+  const r = bounceRings[bounceRingIdx++ % BOUNCE_POOL];
+  r.group.position.set(x, y, z); r.group.rotation.set(0, 0, 0);
+  if (axis === 'x') r.group.rotation.y = Math.PI / 2;
+  if (axis === 'y') r.group.rotation.x = Math.PI / 2;
+  r.flash = 1.0;
+  if (gameState === 'playing') soundWall();
+}
+
+// ── Game state ────────────────────────────────────────────────────────────────
+const PADDLE_LERP_FAST = 80;   // effectively instant (clamped to 1 at 60 fps)
+const PADDLE_LERP_SLOW = 4;    // ~6% per frame — noticeable drag
+const MID_Y = AY + AH * 0.55;
+const WIN_SCORE = 11;
+let p1Score = 0, p2Score = 0;
+const scoreEl   = document.getElementById('score');
+const scoreP1El = document.getElementById('score-p1');
+const scoreP2El = document.getElementById('score-p2');
+
+const ball = { pos: new THREE.Vector3(0, MID_Y, AD * 0.5), vel: new THREE.Vector3() };
+const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false };
+const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false };
+const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
+const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
+let serving = true, servePhase = 'drop', serveTimer = 0;
+
+const attractEl   = document.getElementById('attract');
+const gameoverEl  = document.getElementById('gameover');
+const winnerEl    = document.getElementById('winner');
+
+function clampPaddle(p) {
+  p.x = THREE.MathUtils.clamp(p.x, -AW / 2, AW / 2);
+  p.y = THREE.MathUtils.clamp(p.y,  AY,      AY + AH);
+}
+
+const DROP_START_Y = AY + AH, DROP_END_Y = AY + AH * 0.55;
+const DROP_DURATION = 1.1, PAUSE_DURATION = 0.35;
+
+function setAllPaddlesVisible(v) {
+  paddle1.visible  = v && !p1.deleted;
+  paddle1b.visible = v && !p1b.deleted;
+  paddle2.visible  = v && !p2.deleted;
+  paddle2b.visible = v && !p2b.deleted;
+}
+
+function resetPaddles() {
+  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST;
+  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST;
+  p2.deleted  = false; p2.speedMult  = 1.0;
+  p2b.deleted = false; p2b.speedMult = 1.0;
+}
+
+function updateScoreDisplay() {
+  scoreP1El.textContent = p1Score;
+  scoreP2El.textContent = p2Score;
+  updateVRBricks();
+}
+
+function scorePoint(scorer, pts = 1) {
+  if (scorer === 0) p1Score += pts; else p2Score += pts;
+  updateScoreDisplay();
+  soundScore();
+  if (p1Score >= WIN_SCORE || p2Score >= WIN_SCORE) {
+    endGame(p1Score >= WIN_SCORE ? 1 : 0);
+  } else {
+    startServe(true);
+  }
+}
+
+const soundScore = () => { blip(600, 0.09, 0.45); setTimeout(() => blip(800, 0.12, 0.5), 90); };
+
+function startServe(afterPoint = false) {
+  missDetected[0] = missDetected[1] = false;
+  ball.vel.set(0, 0, 0);
+  serving = true;
+  if (!afterPoint && !camAtGame && camAnimTime < 0 && !renderer.xr.isPresenting) {
+    startCamAnim(CAM_INTRO_POS, CAM_INTRO_TARGET, CAM_GAME_POS, CAM_GAME_TARGET,
+                 () => { camAtGame = true; });
+  }
+  if (afterPoint) { servePhase = 'wait'; serveTimer = 0.8; }
+  else {
+    ball.pos.set(0, DROP_START_Y, AD * 0.5);
+    servePhase = 'drop'; serveTimer = DROP_DURATION;
+    for (let i = 0; i < TRAIL; i++) trailBuf[i].set(-99, 0, 0);
+  }
+}
+
+function serve() {
+  const az = (Math.random() - 0.5) * 0.5, ay = (Math.random() - 0.5) * 0.25;
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  ball.vel.set(Math.sin(az) * 2.4, Math.sin(ay) * 2.4, dir * Math.cos(az) * 2.4);
+  serving = false;
+}
+
+function serveAttract() {
+  ball.pos.set(0, AY + AH * 0.5, AD * 0.5);
+  for (let i = 0; i < TRAIL; i++) trailBuf[i].set(-99, 0, 0);
+  const az = (Math.random() - 0.5) * 1.2, ay = (Math.random() - 0.5) * 0.6;
+  const dir = Math.random() < 0.5 ? 1 : -1;
+  ball.vel.set(Math.sin(az) * 1.8, Math.sin(ay) * 1.8, dir * Math.cos(az) * 1.8);
+}
+
+function enterAttractMode(fromGame = false) {
+  gameState = 'attract'; serving = false;
+  scoreEl.classList.remove('visible');
+  setAllPaddlesVisible(false);
+  serveAttract();
+  if (renderer.xr.isPresenting) {
+    vrLogoMesh.visible = true; vrStartMesh.visible = true;
+    vrScoreTargetY = SCORE_ATTRACT_Y;
+    startArenaAnim(arenaRoot.position.clone(), arenaRoot.scale.x, arenaRoot.rotation.y,
+                   ARENA_MINI_POS, ARENA_MINI_SCALE, ARENA_MINI_ROT_Y);
+  } else {
+    vrScoreMesh.visible = false;
+    if (fromGame) {
+      startCamAnim(camera.position.clone(), controls.target.clone(), CAM_INTRO_POS, CAM_INTRO_TARGET,
+                   () => { camAtGame = false; attractEl.classList.add('visible'); });
+    } else {
+      camAtGame = false; attractEl.classList.add('visible');
+    }
+  }
+}
+
+function endGame(loserIdx) {
+  gameState = 'gameover';
+  ball.vel.set(0, 0, 0);
+  setAllPaddlesVisible(false);
+  winnerEl.textContent = loserIdx === 0 ? 'P2 WINS' : 'P1 WINS';
+  gameoverEl.classList.add('visible');
+  soundWin();
+  if (renderer.xr.isPresenting) {
+    vrLogoMesh.visible = true; vrStartMesh.visible = true;
+    vrScoreTargetY = SCORE_ATTRACT_Y;
+    startArenaAnim(arenaRoot.position.clone(), arenaRoot.scale.x, arenaRoot.rotation.y,
+                   ARENA_MINI_POS, ARENA_MINI_SCALE, ARENA_MINI_ROT_Y);
+  }
+}
+
+function startGame() {
+  gameState = 'playing';
+  p1Score = 0; p2Score = 0;
+  scoreEl.classList.add('visible');
+  resetPaddles();
+  resetBricks();
+  updateScoreDisplay();
+  vrLogoMesh.visible = false; vrStartMesh.visible = false;
+  if (renderer.xr.isPresenting) {
+    vrScoreMesh.visible = true; vrScoreTargetY = SCORE_GAME_Y;
+  }
+  attractEl.classList.remove('visible');
+  gameoverEl.classList.remove('visible');
+  ball.vel.set(0, 0, 0);
+  serving = true; servePhase = 'wait'; serveTimer = 99;
+  if (renderer.xr.isPresenting) {
+    setAllPaddlesVisible(false);
+    startArenaAnim(arenaRoot.position.clone(), arenaRoot.scale.x, arenaRoot.rotation.y,
+                   ARENA_FULL_POS, ARENA_FULL_SCALE, ARENA_FULL_ROT_Y, () => {
+                     setAllPaddlesVisible(true); startServe();
+                   });
+  } else {
+    setAllPaddlesVisible(true); startServe();
+  }
+}
+
+enterAttractMode();
+
+// ── Angular deflection ────────────────────────────────────────────────────────
+const MAX_DEFLECT = 55 * Math.PI / 180;
+const HIT_SPEEDUP = 1.055;
+const MAX_SPEED   = 6.0;
+
+function applyPaddleHit(paddleX, paddleY, newZSign, paddleIdx) {
+  paddleFlash[paddleIdx] = 1.0;
+  const dx = ball.pos.x - paddleX, dy = ball.pos.y - paddleY;
+  const hitDist = Math.sqrt(dx * dx + dy * dy);
+  const norm  = Math.min(hitDist / PADDLE_R, 1.0);
+  const spd   = Math.min(ball.vel.length() * HIT_SPEEDUP, MAX_SPEED);
+  const angle = norm * MAX_DEFLECT;
+  const fwd = Math.cos(angle), lat = Math.sin(angle);
+  const latX = hitDist > 0.001 ? dx / hitDist : 0;
+  const latY = hitDist > 0.001 ? dy / hitDist : 0;
+  ball.vel.set(latX * lat * spd, latY * lat * spd, newZSign * fwd * spd);
+  soundPaddle();
+}
+
+// ── Mouse → P1 (desktop) ──────────────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse2    = new THREE.Vector2();
+const p1Plane   = new THREE.Plane(new THREE.Vector3(0, 0, 1), -PADDLE_INSET);
+
+window.addEventListener('keydown', () => {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  if ((gameState === 'attract' || gameState === 'gameover') && camAnimTime < 0) startGame();
+});
+window.addEventListener('pointerdown', () => {
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+});
+
+window.addEventListener('mousemove', e => {
+  if (renderer.xr.isPresenting) return;
+  mouse2.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(mouse2, camera);
+  const hit = new THREE.Vector3();
+  if (raycaster.ray.intersectPlane(p1Plane, hit)) {
+    p1.targetX = hit.x * P1_SENS;
+    p1.targetY = ARENA_CY + (hit.y - ARENA_CY) * P1_SENS;
+    p1b.targetX = p1.targetX; p1b.targetY = p1.targetY;
+  }
+});
+
+// ── CPU P2 ────────────────────────────────────────────────────────────────────
+const CPU_SPEED = 1.5;
+const CPU_ERROR = 0.040;
+const DEFENSIVE_SPREAD = AW * 0.18;
+let cpuOff = { x: 0, y: 0 }, cpuOff2 = { x: 0, y: 0 };
+
+function resetCpuOff() {
+  const a1 = Math.random() * Math.PI * 2, r1 = CPU_ERROR * (0.5 + Math.random() * 0.5);
+  cpuOff.x  = Math.cos(a1) * r1; cpuOff.y  = Math.sin(a1) * r1;
+  const a2 = Math.random() * Math.PI * 2, r2 = CPU_ERROR * (0.5 + Math.random() * 0.5);
+  cpuOff2.x = Math.cos(a2) * r2; cpuOff2.y = Math.sin(a2) * r2;
+}
+resetCpuOff();
+
+function cpuMoveToward(paddle, tx, ty, dt) {
+  if (paddle.deleted) return;
+  const dx = tx - paddle.x, dy = ty - paddle.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d > 0.001) { const spd = CPU_SPEED * (paddle.speedMult || 1.0) * dt; paddle.x += dx / d * Math.min(d, spd); paddle.y += dy / d * Math.min(d, spd); }
+}
+
+function updateCpu(dt) {
+  if (ball.vel.z <= 0) {
+    // Ball moving away — spread to defensive positions
+    const midY = AY + AH * 0.5;
+    cpuMoveToward(p2,   DEFENSIVE_SPREAD, midY, dt);   // right hand: centre-right
+    cpuMoveToward(p2b, -DEFENSIVE_SPREAD, midY, dt);   // left hand:  centre-left
+  } else {
+    // Ball incoming — both hands converge on ball
+    cpuMoveToward(p2,  ball.pos.x + cpuOff.x,  ball.pos.y + cpuOff.y,  dt);
+    cpuMoveToward(p2b, ball.pos.x + cpuOff2.x, ball.pos.y + cpuOff2.y, dt);
+  }
+  clampPaddle(p2); clampPaddle(p2b);
+  // Simulated head = midpoint of hands → drives P2 brick group
+  updateBrickGroupX(1, (p2.x + p2b.x) / 2);
+}
+
+// ── WebXR ─────────────────────────────────────────────────────────────────────
+let xrSession = null;
+
+renderer.xr.addEventListener('sessionstart', () => {
+  xrSession = renderer.xr.getSession();
+  const refSpace = renderer.xr.getReferenceSpace();
+  if (refSpace) {
+    renderer.xr.setReferenceSpace(
+      refSpace.getOffsetReferenceSpace(new XRRigidTransform({ x:0,y:0,z:0,w:1 }, { x:0,y:1,z:0,w:0 }))
+    );
+  }
+  gameState = 'attract'; serving = false;
+  setAllPaddlesVisible(false); serveAttract();
+  arenaAnimTime = -1;
+  arenaRoot.position.copy(ARENA_MINI_POS);
+  arenaRoot.scale.setScalar(ARENA_MINI_SCALE);
+  arenaRoot.rotation.y = ARENA_MINI_ROT_Y;
+  vrLogoMesh.visible = true; vrStartMesh.visible = true;
+  vrScoreMesh.visible = true;
+  vrScoreMesh.position.y = SCORE_ATTRACT_Y; vrScoreTargetY = SCORE_ATTRACT_Y;
+  xrSession.addEventListener('selectstart', () => {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if ((gameState === 'attract' || gameState === 'gameover') && arenaAnimTime < 0) startGame();
+  });
+});
+
+renderer.xr.addEventListener('sessionend', () => {
+  xrSession = null; arenaAnimTime = -1;
+  arenaRoot.position.set(0,0,0); arenaRoot.scale.setScalar(1); arenaRoot.rotation.y = 0;
+  vrLogoMesh.visible = false; vrStartMesh.visible = false; vrScoreMesh.visible = false;
+  gameoverEl.classList.remove('visible');
+  enterAttractMode();
+});
+
+const grip1 = renderer.xr.getControllerGrip(0);
+const grip2 = renderer.xr.getControllerGrip(1);
+scene.add(grip1, grip2);
+
+function updateXRPaddles(frame) {
+  if (!xrSession || !frame) return;
+  const rs = renderer.xr.getReferenceSpace();
+  if (!rs) return;
+  for (const src of xrSession.inputSources) {
+    const isRight = src.handedness === 'right', isLeft = src.handedness === 'left';
+    if (!isRight && !isLeft) continue;
+    let wx, wy;
+    if (src.hand) {
+      const wrist = src.hand.get('wrist');
+      if (wrist) { const pose = frame.getJointPose(wrist, rs); if (pose) { wx = pose.transform.position.x; wy = pose.transform.position.y; } }
+    } else if (src.gripSpace) {
+      const pose = frame.getPose(src.gripSpace, rs);
+      if (pose) { wx = pose.transform.position.x; wy = pose.transform.position.y; }
+    }
+    if (wx === undefined) continue;
+    const target = isRight ? p1 : p1b;
+    target.targetX = wx * P1_SENS;
+    target.targetY = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
+  }
+}
+
+// ── Ball physics ──────────────────────────────────────────────────────────────
+function applyP1BrickEffect(idx) {
+  if      (idx === 0) { p1b.deleted = true;  paddle1b.visible = false; }
+  else if (idx === 1) { p1b.lerpSpeed = PADDLE_LERP_SLOW; }
+  else if (idx === 3) { p1.lerpSpeed  = PADDLE_LERP_SLOW; }
+  else if (idx === 4) { p1.deleted  = true;  paddle1.visible  = false; }
+}
+
+function applyP2BrickEffect(idx) {
+  if      (idx === 0) { p2b.deleted = true;  paddle2b.visible = false; }
+  else if (idx === 1) { p2b.speedMult = 0.5; }
+  else if (idx === 3) { p2.speedMult  = 0.5; }
+  else if (idx === 4) { p2.deleted  = true;  paddle2.visible  = false; }
+}
+
+function checkBrickHit(bricks, sideIdx, brickZ, velZSign) {
+  const front = brickZ + (BRICK_D / 2 + BALL_R) * (-velZSign);
+  const back  = brickZ + (BRICK_D / 2 + BALL_R) * ( velZSign);
+  const inRange = velZSign < 0
+    ? (ball.pos.z <= front && ball.pos.z >= back)
+    : (ball.pos.z >= front && ball.pos.z <= back);
+  if (!inRange) return false;
+
+  for (let i = 0; i < bricks.length; i++) {
+    const brick = bricks[i];
+    if (!brick.alive) continue;
+    if (Math.abs(ball.pos.x - brick.x) < BRICK_W / 2 + BALL_R &&
+        Math.abs(ball.pos.y - brick.y) < BRICK_H / 2 + BALL_R) {
+      ball.pos.z = front;
+      ball.vel.z = -ball.vel.z;
+      wallFlash[sideIdx] = 1.0;
+      soundBrick();
+      triggerBounceRing(brick.x, brick.y, brickZ, 'z');
+
+      brick.alive = false; brick.mesh.visible = false; brick.edges.visible = false;
+      brickCounts[sideIdx]--;
+      if (i === 2) {
+        // Centre brick: 100 pts instant win for the attacker
+        updateVRBricks();
+        scorePoint(1 - sideIdx, 100);
+      } else {
+        updateVRBricks();
+        if (sideIdx === 0) applyP1BrickEffect(i);
+        else               applyP2BrickEffect(i);
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
+function updateBall(dt) {
+  if (serving) {
+    if (servePhase === 'wait') {
+      if ((serveTimer -= dt) <= 0) {
+        ball.pos.set(0, DROP_START_Y, AD * 0.5);
+        servePhase = 'drop'; serveTimer = DROP_DURATION;
+        for (let i = 0; i < TRAIL; i++) trailBuf[i].set(-99, 0, 0);
+      }
+    } else if (servePhase === 'drop') {
+      serveTimer -= dt;
+      const t = Math.max(0, 1 - serveTimer / DROP_DURATION);
+      const ease = t * t * (3 - 2 * t);
+      ball.pos.set(0, DROP_START_Y + (DROP_END_Y - DROP_START_Y) * ease, AD * 0.5);
+      if (serveTimer <= 0) { ball.pos.set(0, DROP_END_Y, AD * 0.5); servePhase = 'pause'; serveTimer = PAUSE_DURATION; }
+    } else {
+      if ((serveTimer -= dt) <= 0) serve();
+    }
+    return;
+  }
+
+  ball.pos.addScaledVector(ball.vel, dt);
+
+  // Side walls
+  if (ball.pos.x < -AW / 2 + BALL_R) {
+    ball.pos.x = -AW / 2 + BALL_R; ball.vel.x = Math.abs(ball.vel.x);
+    triggerBounceRing(-AW / 2, ball.pos.y, ball.pos.z, 'x');
+  } else if (ball.pos.x > AW / 2 - BALL_R) {
+    ball.pos.x = AW / 2 - BALL_R; ball.vel.x = -Math.abs(ball.vel.x);
+    triggerBounceRing(AW / 2, ball.pos.y, ball.pos.z, 'x');
+  }
+  // Top/bottom walls
+  if (ball.pos.y < AY + BALL_R) {
+    ball.pos.y = AY + BALL_R; ball.vel.y = Math.abs(ball.vel.y);
+    triggerBounceRing(ball.pos.x, AY, ball.pos.z, 'y');
+  } else if (ball.pos.y > AY + AH - BALL_R) {
+    ball.pos.y = AY + AH - BALL_R; ball.vel.y = -Math.abs(ball.vel.y);
+    triggerBounceRing(ball.pos.x, AY + AH, ball.pos.z, 'y');
+  }
+
+  // In attract / gameover: both end walls bounce, no bricks
+  if (gameState !== 'playing') {
+    if (ball.vel.z < 0 && ball.pos.z < BALL_R) {
+      ball.pos.z = BALL_R; ball.vel.z = Math.abs(ball.vel.z);
+      triggerBounceRing(ball.pos.x, ball.pos.y, 0, 'z');
+    } else if (ball.vel.z > 0 && ball.pos.z > AD - BALL_R) {
+      ball.pos.z = AD - BALL_R; ball.vel.z = -Math.abs(ball.vel.z);
+      triggerBounceRing(ball.pos.x, ball.pos.y, AD, 'z');
+    }
+    return;
+  }
+
+  // ── P1 end — paddle check ─────────────────────────────────────────────────
+  if (ball.vel.z < 0 && ball.pos.z < PADDLE_INSET + BALL_R) {
+    const dxa = ball.pos.x - p1.x,  dya = ball.pos.y - p1.y;
+    const dxb = ball.pos.x - p1b.x, dyb = ball.pos.y - p1b.y;
+    const hitA = !p1.deleted  && Math.sqrt(dxa*dxa + dya*dya) < PADDLE_R + BALL_R;
+    const hitB = !p1b.deleted && Math.sqrt(dxb*dxb + dyb*dyb) < PADDLE_R + BALL_R;
+    if (hitA) {
+      ball.pos.z = PADDLE_INSET + BALL_R; applyPaddleHit(p1.x,  p1.y,  +1, 0); resetCpuOff();
+    } else if (hitB) {
+      ball.pos.z = PADDLE_INSET + BALL_R; applyPaddleHit(p1b.x, p1b.y, +1, 1); resetCpuOff();
+    } else {
+      if (!missDetected[0] && ball.pos.z <= PADDLE_INSET) {
+        missDetected[0] = true;
+        miss1.group.position.set(ball.pos.x, ball.pos.y, PADDLE_INSET);
+        missFlash[0] = 1.0;
+      }
+      // Brick check — ball missed the paddle, heading toward P1's bricks
+      checkBrickHit(p1Bricks, 0, BRICK_Z1, -1);
+    }
+  }
+
+  // P1 back wall: P2 scores a point
+  if (ball.vel.z < 0 && ball.pos.z < BALL_R) {
+    triggerBounceRing(ball.pos.x, ball.pos.y, 0, 'z');
+    scorePoint(1);
+  }
+
+  // ── P2 end — paddle check ─────────────────────────────────────────────────
+  if (ball.vel.z > 0 && ball.pos.z > AD - PADDLE_INSET - BALL_R) {
+    const dxa = ball.pos.x - p2.x,  dya = ball.pos.y - p2.y;
+    const dxb = ball.pos.x - p2b.x, dyb = ball.pos.y - p2b.y;
+    const hitA = !p2.deleted  && Math.sqrt(dxa*dxa + dya*dya) < PADDLE_R + BALL_R;
+    const hitB = !p2b.deleted && Math.sqrt(dxb*dxb + dyb*dyb) < PADDLE_R + BALL_R;
+    if (hitA) {
+      ball.pos.z = AD - PADDLE_INSET - BALL_R; applyPaddleHit(p2.x,  p2.y,  -1, 2);
+    } else if (hitB) {
+      ball.pos.z = AD - PADDLE_INSET - BALL_R; applyPaddleHit(p2b.x, p2b.y, -1, 3);
+    } else {
+      if (!missDetected[1] && ball.pos.z >= AD - PADDLE_INSET) {
+        missDetected[1] = true;
+        miss2.group.position.set(ball.pos.x, ball.pos.y, AD - PADDLE_INSET);
+        missFlash[1] = 1.0;
+      }
+      // Brick check — ball missed the paddle, heading toward P2's bricks
+      checkBrickHit(p2Bricks, 1, BRICK_Z2, +1);
+    }
+  }
+
+  // P2 back wall: P1 scores a point
+  if (ball.vel.z > 0 && ball.pos.z > AD - BALL_R) {
+    triggerBounceRing(ball.pos.x, ball.pos.y, AD, 'z');
+    scorePoint(0);
+  }
+}
+
+// ── Audio ─────────────────────────────────────────────────────────────────────
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function blip(freq, dur, vol = 0.35) {
+  if (audioCtx.state !== 'running') return;
+  try {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.connect(g); g.connect(audioCtx.destination);
+    o.type = 'square'; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+
+const soundPaddle = () => blip(480, 0.08, 0.4);
+const soundWall   = () => blip(240, 0.06, 0.2);
+const soundBrick  = () => { blip(320, 0.07, 0.45); setTimeout(() => blip(180, 0.12, 0.35), 70); };
+function soundWin() {
+  blip(440, 0.12, 0.5); setTimeout(() => blip(560, 0.14, 0.55), 140);
+  setTimeout(() => blip(880, 0.22, 0.6), 300);
+}
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ── Main loop ─────────────────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+
+renderer.setAnimationLoop((time, frame) => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if (frame) updateXRPaddles(frame);
+
+  // Lerp P1 paddles toward targets (respects lerpSpeed penalty from brick hits)
+  if (!p1.deleted) {
+    const ls = Math.min(p1.lerpSpeed * dt, 1);
+    p1.x += (p1.targetX - p1.x) * ls; p1.y += (p1.targetY - p1.y) * ls;
+    clampPaddle(p1);
+  }
+  if (!p1b.deleted) {
+    const ls = Math.min(p1b.lerpSpeed * dt, 1);
+    p1b.x += (p1b.targetX - p1b.x) * ls; p1b.y += (p1b.targetY - p1b.y) * ls;
+    clampPaddle(p1b);
+  }
+
+  updateCpu(dt);   // also calls updateBrickGroupX(1, p2HeadX)
+  updateBall(dt);
+
+  // P1 brick group tracks human head
+  const headX = renderer.xr.isPresenting ? renderer.xr.getCamera().position.x : camera.position.x;
+  updateBrickGroupX(0, headX);
+
+  if (vrStartMesh.visible) vrStartMat.opacity = (time % 1200 < 600) ? 1.0 : 0.0;
+
+  if (wallFlash[0] > 0) { wallFlash[0] = Math.max(0, wallFlash[0] - dt / 0.4); p1WallMat.opacity = wallFlash[0] * 0.55; }
+  if (wallFlash[1] > 0) { wallFlash[1] = Math.max(0, wallFlash[1] - dt / 0.4); p2WallMat.opacity = wallFlash[1] * 0.55; }
+
+  const faceMats = [p1FaceMat, p1bFaceMat, p2FaceMat, p2bFaceMat];
+  for (let i = 0; i < 4; i++) {
+    if (paddleFlash[i] > 0) {
+      paddleFlash[i] = Math.max(0, paddleFlash[i] - dt / 1.2);
+      faceMats[i].opacity = 0.35 + paddleFlash[i] * 0.55;
+    }
+  }
+
+  if (missFlash[0] > 0) { missFlash[0] = Math.max(0, missFlash[0] - dt / 1.8); miss1.fillMat.opacity = missFlash[0] * 0.18; miss1.rimMat.opacity = missFlash[0] * 0.7; }
+  if (missFlash[1] > 0) { missFlash[1] = Math.max(0, missFlash[1] - dt / 1.8); miss2.fillMat.opacity = missFlash[1] * 0.18; miss2.rimMat.opacity = missFlash[1] * 0.7; }
+  for (const r of bounceRings) {
+    if (r.flash > 0) { r.flash = Math.max(0, r.flash - dt / 0.4); r.fillMat.opacity = r.flash * 0.18; r.rimMat.opacity = r.flash * 0.7; }
+  }
+  pushTrail(ball.pos);
+
+  ballMesh.position.copy(ball.pos);
+  paddle1.position.set(p1.x,   p1.y,   PADDLE_INSET);       paddle1.rotation.set(0, 0, 0);
+  paddle1b.position.set(p1b.x, p1b.y,  PADDLE_INSET);       paddle1b.rotation.set(0, 0, 0);
+  paddle2.position.set(p2.x,   p2.y,   AD - PADDLE_INSET);  paddle2.rotation.set(0, Math.PI, 0);
+  paddle2b.position.set(p2b.x, p2b.y,  AD - PADDLE_INSET);  paddle2b.rotation.set(0, Math.PI, 0);
+
+  if (vrScoreMesh.visible) {
+    vrScoreMesh.position.y += (vrScoreTargetY - vrScoreMesh.position.y) * Math.min(dt * 2.5, 1);
+  }
+
+  if (arenaAnimTime >= 0) {
+    arenaAnimTime = Math.min(arenaAnimTime + dt, ARENA_ANIM_DURATION);
+    const t = arenaAnimTime / ARENA_ANIM_DURATION, ease = t * t * (3 - 2 * t);
+    arenaRoot.scale.setScalar(arenaAnimFromSc + (arenaAnimToSc - arenaAnimFromSc) * ease);
+    arenaRoot.position.lerpVectors(_arenaFromPos, _arenaToPos, ease);
+    arenaRoot.rotation.y = arenaAnimFromRot + (arenaAnimToRot - arenaAnimFromRot) * ease;
+    if (arenaAnimTime >= ARENA_ANIM_DURATION) {
+      arenaAnimTime = -1;
+      arenaRoot.scale.setScalar(arenaAnimToSc); arenaRoot.position.copy(_arenaToPos); arenaRoot.rotation.y = arenaAnimToRot;
+      if (_arenaOnDone) { _arenaOnDone(); _arenaOnDone = null; }
+    }
+  }
+
+  if (camAnimTime >= 0) {
+    camAnimTime = Math.min(camAnimTime + dt, CAM_ANIM_DURATION);
+    const t = camAnimTime / CAM_ANIM_DURATION, ease = t * t * (3 - 2 * t);
+    camera.position.lerpVectors(_camFrom, _camTo, ease);
+    controls.target.lerpVectors(_camFromT, _camToT, ease);
+    camera.lookAt(controls.target);
+    if (camAnimTime >= CAM_ANIM_DURATION) {
+      camAnimTime = -1; camera.position.copy(_camTo); controls.target.copy(_camToT);
+      controls.enabled = true; controls.update();
+      if (_camOnDone) { _camOnDone(); _camOnDone = null; }
+    }
+  } else if (!renderer.xr.isPresenting) {
+    controls.update();
+  }
+
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
