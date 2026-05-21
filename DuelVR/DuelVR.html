@@ -366,19 +366,7 @@ const _p2bBaseColor = new THREE.Color(0xffbb66);
 const { group: paddle2,  faceMat: p2FaceMat  } = makePaddle(0xdd3355, 0xff88aa);
 const { group: paddle2b, faceMat: p2bFaceMat } = makePaddle(0xdd7722, 0xffbb66);
 
-function makeGhostRing(color) {
-  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, depthWrite: false });
-  const torus = new THREE.Mesh(new THREE.TorusGeometry(PADDLE_R, 0.004, 8, 40), mat);
-  torus.position.y = PADDLE_R;
-  const g = new THREE.Group();
-  g.add(torus); g.visible = false;
-  arenaRoot.add(g);
-  return g;
-}
-const ghostRing1  = makeGhostRing(0x88bbff);
-const ghostRing1b = makeGhostRing(0x66ddff);
-const ghostRing2  = makeGhostRing(0xff88aa);
-const ghostRing2b = makeGhostRing(0xffbb66);
+
 
 // Real-scale hand indicators — track actual VR hand position 1:1, no game mechanics
 function makeRealHandRing(color) {
@@ -1414,10 +1402,6 @@ renderer.setAnimationLoop((time, frame) => {
   paddle2b.position.set(p2b.x, p2b.y  - PADDLE_R, AD - PADDLE_INSET);  paddle2b.rotation.set(-p2b.tilt, Math.PI, 0);  paddle2b.scale.setScalar(p2b.scale);
 
   if (!renderer.xr.isPresenting) { realHand1.visible = false; realHand1b.visible = false; }
-  ghostRing1.visible  = balls[0].state === 'flying'; ghostRing1.position.set(p1.x,   p1.y   - PADDLE_R, PADDLE_INSET);
-  ghostRing1b.visible = balls[1].state === 'flying'; ghostRing1b.position.set(p1b.x, p1b.y  - PADDLE_R, PADDLE_INSET);
-  ghostRing2.visible  = balls[2].state === 'flying'; ghostRing2.position.set(p2.x,   p2.y   - PADDLE_R, AD - PADDLE_INSET);
-  ghostRing2b.visible = balls[3].state === 'flying'; ghostRing2b.position.set(p2b.x, p2b.y  - PADDLE_R, AD - PADDLE_INSET);
   // Laser visibility is managed inside updateXRPaddles; hide both outside VR
   if (!renderer.xr.isPresenting) { laser1.line.visible = false; laser1b.line.visible = false; }
 
