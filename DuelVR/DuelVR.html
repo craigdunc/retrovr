@@ -1134,7 +1134,7 @@ function updateBall(dt) {
 
     const s = b.state === 'returning' ? 0.5 : 1.0;
     b.mesh.scale.setScalar(s);
-    b.setFade(b.state === 'returning' ? 0.1 : 1.0);
+    b.setFade(b.state === 'returning' ? 0.35 : 1.0);
     b.mesh.visible = true;
     b.pushTrail(b.pos);
     b.mesh.position.copy(b.pos);
