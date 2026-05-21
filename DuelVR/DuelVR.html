@@ -147,9 +147,17 @@ const ARENA_CY     = AY + AH * 0.5;
 
 // Bricks: 5 per side, at back of each player's half
 const BRICK_COUNT = 5;
-const BRICK_W = (AW / 2) / BRICK_COUNT;  // 5 bricks = half-arena width
+const BRICK_W = (AW / 2) / BRICK_COUNT;  // kept for legacy bounds use
 const BRICK_H = 0.12;
 const BRICK_SCALE = 0.60;
+// Per-brick [w, h] — avatar arm-spread pose (idx 0=outer-left … 4=outer-right)
+const BRICK_CONFIGS = [
+  { w: 0.090, h: 0.060 },  // outer (hand)
+  { w: 0.040, h: 0.130 },  // inner (arm)
+  { w: 0.160, h: 0.130 },  // centre (chest / life brick)
+  { w: 0.040, h: 0.130 },  // inner (arm)
+  { w: 0.090, h: 0.060 },  // outer (hand)
+];
 const BRICK_D = 0.08;           // thick enough to prevent tunnelling at max speed
 const BRICK_Y = AY + AH * 0.5; // vertically centred in arena
 const BRICK_Z1 = -BRICK_D / 2;      // P1's bricks flush with z=0 wall (face facing P2 at z=0)
@@ -385,11 +393,18 @@ const p1bLaserDir    = new THREE.Vector3();
 
 // ── Bricks ────────────────────────────────────────────────────────────────────
 function makeBricks(brickZ, fillColor, edgeColor) {
-  const bW = BRICK_W * BRICK_SCALE;
-  const groupW = bW * BRICK_COUNT;
+  // Compute touching centre X positions, packing outward from idx 2 (centre)
+  const xs = new Array(BRICK_COUNT);
+  xs[2] = 0;
+  for (let i = 1; i >= 0; i--)
+    xs[i] = xs[i + 1] - BRICK_CONFIGS[i + 1].w / 2 - BRICK_CONFIGS[i].w / 2;
+  for (let i = 3; i < BRICK_COUNT; i++)
+    xs[i] = -xs[BRICK_COUNT - 1 - i];
+
   return Array.from({ length: BRICK_COUNT }, (_, i) => {
-    const localX  = -groupW / 2 + bW / 2 + bW * i;
-    const geo     = new THREE.BoxGeometry(BRICK_W * BRICK_SCALE, BRICK_H * BRICK_SCALE, BRICK_D);
+    const { w, h } = BRICK_CONFIGS[i];
+    const localX = xs[i];
+    const geo     = new THREE.BoxGeometry(w, h, BRICK_D);
     const fillMat = new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.18 });
     const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: 1 });
     const mesh  = new THREE.Mesh(geo, fillMat);
@@ -397,7 +412,7 @@ function makeBricks(brickZ, fillColor, edgeColor) {
     mesh.position.set(localX, BRICK_Y, brickZ);
     edges.position.set(localX, BRICK_Y, brickZ);
     arenaRoot.add(mesh, edges);
-    return { localX, x: localX, y: BRICK_Y, mesh, edges, fillMat, edgeMat, alive: true, state: 'normal' };
+    return { localX, x: localX, y: BRICK_Y, w, h, mesh, edges, fillMat, edgeMat, alive: true, state: 'normal' };
   });
 }
 
@@ -445,8 +460,8 @@ function updateBrickGroupX(side, targetX) {
   if (rightIdx < 0) { brickGroupX[side] = targetX; return; }
   const leftLocalX  = bricks[leftIdx].localX;
   const rightLocalX = bricks[rightIdx].localX;
-  const minX = -AW / 2 - leftLocalX  + BRICK_W / 2;
-  const maxX =  AW / 2 - rightLocalX - BRICK_W / 2;
+  const minX = -AW / 2 - leftLocalX  + bricks[leftIdx].w  / 2;
+  const maxX =  AW / 2 - rightLocalX - bricks[rightIdx].w / 2;
   brickGroupX[side] = Math.max(minX, Math.min(maxX, targetX));
   for (let i = 0; i < BRICK_COUNT; i++) {
     const wx = brickGroupX[side] + bricks[i].localX;
@@ -1036,8 +1051,8 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
   for (let i = 0; i < bricks.length; i++) {
     const brick = bricks[i];
     if (!brick.alive) continue;
-    if (Math.abs(b.pos.x - brick.x) < BRICK_W * BRICK_SCALE / 2 + BALL_R &&
-        Math.abs(b.pos.y - brick.y) < BRICK_H * BRICK_SCALE / 2 + BALL_R) {
+    if (Math.abs(b.pos.x - brick.x) < brick.w / 2 + BALL_R &&
+        Math.abs(b.pos.y - brick.y) < brick.h / 2 + BALL_R) {
       b.pos.z = front;
       b.vel.z = -b.vel.z;
       wallFlash[sideIdx] = 1.0;
