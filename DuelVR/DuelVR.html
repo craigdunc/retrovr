@@ -907,10 +907,10 @@ function shootBall(b, shooter, paddleGroup, dir, shooterZ) {
 
 // ── Ball physics ──────────────────────────────────────────────────────────────
 function applyP1BrickEffect(idx) {
-  if      (idx === 0) { p1b.deleted = true;  paddle1b.visible = false; }
-  else if (idx === 1) { p1b.lerpSpeed = PADDLE_LERP_SLOW; }
-  else if (idx === 3) { p1.lerpSpeed  = PADDLE_LERP_SLOW; }
-  else if (idx === 4) { p1.deleted  = true;  paddle1.visible  = false; }
+  if      (idx === 0) { p1.deleted   = true;  paddle1.visible  = false; }
+  else if (idx === 1) { p1.lerpSpeed  = PADDLE_LERP_SLOW; }
+  else if (idx === 3) { p1b.lerpSpeed = PADDLE_LERP_SLOW; }
+  else if (idx === 4) { p1b.deleted  = true;  paddle1b.visible = false; }
 }
 
 function applyP2BrickEffect(idx) {
