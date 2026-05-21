@@ -151,12 +151,13 @@ const BRICK_W = (AW / 2) / BRICK_COUNT;  // kept for legacy bounds use
 const BRICK_H = 0.12;
 const BRICK_SCALE = 0.60;
 // Per-brick [w, h] — avatar arm-spread pose (idx 0=outer-left … 4=outer-right)
+// dy = Y offset from BRICK_Y (outer bricks hang below arm line, tops aligned)
 const BRICK_CONFIGS = [
-  { w: 0.082, h: 0.056 },  // outer (hand)
-  { w: 0.038, h: 0.130 },  // inner (arm)
-  { w: 0.142, h: 0.116 },  // centre (chest / life brick)
-  { w: 0.038, h: 0.130 },  // inner (arm)
-  { w: 0.082, h: 0.056 },  // outer (hand)
+  { w: 0.058, h: 0.150, dy: -0.026 },  // outer (leg/pillar — hangs below)
+  { w: 0.058, h: 0.098, dy:  0     },  // inner (arm)
+  { w: 0.142, h: 0.098, dy:  0     },  // centre (chest / life brick)
+  { w: 0.058, h: 0.098, dy:  0     },  // inner (arm)
+  { w: 0.058, h: 0.150, dy: -0.026 },  // outer (leg/pillar — hangs below)
 ];
 const BRICK_D = 0.08;           // thick enough to prevent tunnelling at max speed
 const BRICK_Y = AY + AH * 0.5; // vertically centred in arena
@@ -402,17 +403,18 @@ function makeBricks(brickZ, fillColor, edgeColor) {
     xs[i] = -xs[BRICK_COUNT - 1 - i];
 
   return Array.from({ length: BRICK_COUNT }, (_, i) => {
-    const { w, h } = BRICK_CONFIGS[i];
+    const { w, h, dy } = BRICK_CONFIGS[i];
     const localX = xs[i];
+    const localY = BRICK_Y + dy;
     const geo     = new THREE.BoxGeometry(w, h, BRICK_D);
     const fillMat = new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.18 });
     const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: 1 });
     const mesh  = new THREE.Mesh(geo, fillMat);
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
-    mesh.position.set(localX, BRICK_Y, brickZ);
-    edges.position.set(localX, BRICK_Y, brickZ);
+    mesh.position.set(localX, localY, brickZ);
+    edges.position.set(localX, localY, brickZ);
     arenaRoot.add(mesh, edges);
-    return { localX, x: localX, y: BRICK_Y, w, h, mesh, edges, fillMat, edgeMat, alive: true, state: 'normal' };
+    return { localX, x: localX, y: localY, w, h, mesh, edges, fillMat, edgeMat, alive: true, state: 'normal' };
   });
 }
 
