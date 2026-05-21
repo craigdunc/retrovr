@@ -418,8 +418,29 @@ function makeBricks(brickZ, fillColor, edgeColor) {
   });
 }
 
+// Non-destructible avatar body parts: head (above chest) + torso (below chest)
+const AVATAR_BODY_PARTS = [
+  { localX: 0, localY: BRICK_Y + 0.098, w: 0.142, h: 0.098 },  // head
+  { localX: 0, localY: BRICK_Y - 0.189, w: 0.142, h: 0.280 },  // torso/legs
+];
+function makeAvatarBody(brickZ, fillColor, edgeColor) {
+  return AVATAR_BODY_PARTS.map(({ localX, localY, w, h }) => {
+    const geo     = new THREE.BoxGeometry(w, h, BRICK_D);
+    const fillMat = new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.18 });
+    const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: 1 });
+    const mesh  = new THREE.Mesh(geo, fillMat);
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
+    mesh.position.set(localX, localY, brickZ);
+    edges.position.set(localX, localY, brickZ);
+    arenaRoot.add(mesh, edges);
+    return { localX, mesh, edges };
+  });
+}
+
 const p1Bricks = makeBricks(BRICK_Z1, 0x2255bb, 0x44aaff);
 const p2Bricks = makeBricks(BRICK_Z2, 0xbb2233, 0xff4466);
+const p1Body   = makeAvatarBody(BRICK_Z1, 0x2255bb, 0x44aaff);
+const p2Body   = makeAvatarBody(BRICK_Z2, 0xbb2233, 0xff4466);
 // Centre brick (index 2) is the life brick — starts white for both sides
 p1Bricks[2].state = 'white'; p1Bricks[2].fillMat.color.setHex(0xffffff); p1Bricks[2].edgeMat.color.setHex(0xffffff);
 p2Bricks[2].state = 'white'; p2Bricks[2].fillMat.color.setHex(0xffffff); p2Bricks[2].edgeMat.color.setHex(0xffffff);
@@ -468,6 +489,10 @@ function updateBrickGroupX(side, targetX) {
   for (let i = 0; i < BRICK_COUNT; i++) {
     const wx = brickGroupX[side] + bricks[i].localX;
     bricks[i].x = wx; bricks[i].mesh.position.x = wx; bricks[i].edges.position.x = wx;
+  }
+  for (const bp of (side === 0 ? p1Body : p2Body)) {
+    const wx = brickGroupX[side] + bp.localX;
+    bp.mesh.position.x = wx; bp.edges.position.x = wx;
   }
   updateVRBricks();
 }
