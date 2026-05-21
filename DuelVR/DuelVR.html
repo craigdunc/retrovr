@@ -278,8 +278,8 @@ const _glowTex = (() => {
 })();
 
 function makeBallObject(glowColor = 0xffffff) {
-  const ballMat  = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const mesh     = new THREE.Mesh(new THREE.SphereGeometry(BALL_R, 14, 10), ballMat);
+  const ballMat  = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+  const mesh     = new THREE.Mesh(new THREE.CircleGeometry(BALL_R, 24), ballMat);
   const glowMat  = new THREE.SpriteMaterial({ map: _glowTex, color: glowColor, transparent: true, depthWrite: false });
   const sprite   = new THREE.Sprite(glowMat);
   sprite.scale.set(0.30, 0.30, 1); mesh.add(sprite);
@@ -288,7 +288,8 @@ function makeBallObject(glowColor = 0xffffff) {
     new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: (1 - i / TRAIL) * 0.32, depthWrite: false })
   );
   const tMeshes = Array.from({ length: TRAIL }, (_, i) => {
-    const m = new THREE.Mesh(new THREE.SphereGeometry(BALL_R * (1 - i / TRAIL) * 0.7, 6, 4), tMats[i]);
+    tMats[i].side = THREE.DoubleSide;
+    const m = new THREE.Mesh(new THREE.CircleGeometry(BALL_R * (1 - i / TRAIL) * 0.7, 10), tMats[i]);
     arenaRoot.add(m); return m;
   });
   const tBuf = Array.from({ length: TRAIL }, () => new THREE.Vector3(-99, 0, 0));
@@ -364,7 +365,7 @@ function makeBricks(brickZ, fillColor, edgeColor) {
     const localX  = -groupW / 2 + BRICK_W / 2 + BRICK_W * i;
     const geo     = new THREE.BoxGeometry(BRICK_W, BRICK_H, BRICK_D);
     const fillMat = new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.18 });
-    const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor });
+    const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: 1 });
     const mesh  = new THREE.Mesh(geo, fillMat);
     const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
     mesh.position.set(localX, BRICK_Y, brickZ);
@@ -383,7 +384,7 @@ p2Bricks[2].state = 'white'; p2Bricks[2].fillMat.color.setHex(0xffffff); p2Brick
 let brickCounts = [BRICK_COUNT, BRICK_COUNT];
 const brickGroupX = [0, 0];
 const dyingBricks = [];
-let _pendingWin = null;
+let _centerWin = null;
 
 function resetBricks() {
   brickCounts[0] = brickCounts[1] = BRICK_COUNT;
@@ -402,7 +403,8 @@ function resetBricks() {
   updateBrickGroupX(0, 0);
   updateBrickGroupX(1, 0);
   dyingBricks.length = 0;
-  _pendingWin = null;
+  _centerWin = null;
+  for (const br of [...p1Bricks, ...p2Bricks]) { br.fillMat.opacity = 0.18; br.edgeMat.opacity = 1; }
 }
 
 function updateBrickGroupX(side, targetX) {
@@ -943,6 +945,40 @@ function deflectBall(b, paddleX, paddleY, newZSign, flashIdx) {
   soundPaddle();
 }
 
+function updateCenterWin(dt) {
+  if (!_centerWin) return;
+  const cw = _centerWin;
+  cw.timer -= dt;
+  if (cw.phase === 'flash') {
+    if (cw.timer <= 0) {
+      cw.flashCount++;
+      const vis = (cw.flashCount % 2 === 0);
+      cw.brick.mesh.visible = vis;
+      cw.brick.edges.visible = vis;
+      cw.timer = 0.18;
+      if (cw.flashCount >= 8) {
+        cw.brick.mesh.visible = false; cw.brick.edges.visible = false;
+        cw.phase = 'fade'; cw.fadeTotal = 0.55; cw.timer = 0.55;
+      }
+    }
+  } else if (cw.phase === 'fade') {
+    const bricks = cw.sideIdx === 0 ? p1Bricks : p2Bricks;
+    const t = Math.max(0, cw.timer) / cw.fadeTotal;  // 1→0
+    for (let i = 0; i < BRICK_COUNT; i++) {
+      if (i !== 2) { bricks[i].fillMat.opacity = 0.18 * t; bricks[i].edgeMat.opacity = t; }
+    }
+    if (cw.timer <= 0) {
+      for (let i = 0; i < BRICK_COUNT; i++) {
+        if (i !== 2) { bricks[i].mesh.visible = false; bricks[i].edges.visible = false; bricks[i].alive = false; }
+      }
+      const scorer = cw.scorer;
+      _centerWin = null;
+      gameState = 'playing';   // restore so scorePoint → endGame works
+      scorePoint(scorer, 100);
+    }
+  }
+}
+
 const BRICK_FLASH_INTERVAL = 0.1;
 function updateDyingBricks(dt) {
   for (let i = dyingBricks.length - 1; i >= 0; i--) {
@@ -995,7 +1031,9 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
         if (i === 2) {
           soundCenterBrick();
           updateVRBricks();
-          _pendingWin = { scorer: 1 - sideIdx, timer: 3.0 };
+          for (const b of balls) b.vel.set(0, 0, 0);
+          gameState = 'centerwin';
+          _centerWin = { sideIdx, scorer: 1 - sideIdx, brick, phase: 'flash', flashCount: 0, timer: 0.18, fadeTotal: 0.55 };
         } else {
           soundBrick();
           updateVRBricks();
@@ -1010,6 +1048,12 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
 }
 
 function updateBall(dt) {
+  if (gameState === 'centerwin') {
+    for (const b of balls) {
+      if (b.state !== 'idle') { b.mesh.visible = true; b.mesh.position.copy(b.pos); }
+    }
+    return;
+  }
   if (gameState !== 'playing') {
     // Attract / gameover: only balls[0] bounces, others hidden
     for (let i = 1; i < balls.length; i++) balls[i].mesh.visible = false;
@@ -1023,6 +1067,21 @@ function updateBall(dt) {
     else if (b.vel.z>0 && b.pos.z>AD-BALL_R) { b.pos.z=AD-BALL_R; b.vel.z=-Math.abs(b.vel.z); triggerBounceRing(b.pos.x,b.pos.y,AD,'z'); }
     b.pushTrail(b.pos); b.mesh.position.copy(b.pos);
     return;
+  }
+
+  // Ball-ball collisions: opposing flying discs meet and Thor back
+  for (let ai = 0; ai < 2; ai++) {
+    for (let bi = 2; bi < 4; bi++) {
+      const a = balls[ai], b = balls[bi];
+      if (a.state !== 'flying' || b.state !== 'flying') continue;
+      const dx = a.pos.x - b.pos.x, dy = a.pos.y - b.pos.y, dz = a.pos.z - b.pos.z;
+      if (dx*dx + dy*dy + dz*dz < (BALL_R * 2.2) * (BALL_R * 2.2)) {
+        a.state = 'returning'; b.state = 'returning';
+        const mx = (a.pos.x + b.pos.x) * 0.5, my = (a.pos.y + b.pos.y) * 0.5, mz = (a.pos.z + b.pos.z) * 0.5;
+        triggerBounceRing(mx, my, mz, 'z');
+        soundBrick();
+      }
+    }
   }
 
   // Playing: each ball is independent
@@ -1071,6 +1130,8 @@ function updateBall(dt) {
       }
     }
 
+    const s = b.state === 'returning' ? 0.5 : 1.0;
+    b.mesh.scale.setScalar(s);
     b.setFade(b.state === 'returning' ? 0.1 : 1.0);
     b.mesh.visible = true;
     b.pushTrail(b.pos);
@@ -1170,14 +1231,7 @@ renderer.setAnimationLoop((time, frame) => {
   updateCpuShooting(dt);
   updateBall(dt);
   updateDyingBricks(dt);
-  if (_pendingWin && gameState === 'playing') {
-    _pendingWin.timer -= dt;
-    if (_pendingWin.timer <= 0) {
-      const scorer = _pendingWin.scorer;
-      _pendingWin = null;
-      scorePoint(scorer, 100);
-    }
-  }
+  updateCenterWin(dt);
 
   // P1 brick group tracks human head
   const headX = renderer.xr.isPresenting ? renderer.xr.getCamera().position.x : camera.position.x;
