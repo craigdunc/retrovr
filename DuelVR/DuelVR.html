@@ -451,9 +451,7 @@ const dyingBricks = [];
 
 // ── Avatar motion pose ────────────────────────────────────────────────────────
 // rotation.z applied to each brick when fully in "running" state (0=still,1=running)
-const AVATAR_LEAN      = 0.28;                                    // max lean angle (radians)
-const BRICK_MOTION_DX  = [-0.030,-0.014,  0,    0.014, 0.030 ];  // arms spread outward at speed
-const BRICK_MOTION_DY  = [-0.020,-0.008,  0,   -0.008,-0.020 ];  // outer bricks drop at speed
+const AVATAR_LEAN = 0.28;  // max lean angle (radians)
 const avatarPose       = [0, 0];             // per-side lerp value
 const _prevHeadPos     = new THREE.Vector3();
 let   _prevP2GroupX    = 0;
@@ -1099,22 +1097,34 @@ function updateAvatarPose(dt) {
     const bricks = side === 0 ? p1Bricks : p2Bricks;
     const body   = side === 0 ? p1Body   : p2Body;
     const pose   = avatarPose[side];
-    const mag    = Math.abs(pose);
-    const rz     = -AVATAR_LEAN * pose;  // negative: rightward motion → clockwise lean
+    const mag = Math.abs(pose);
+    const rz  = -AVATAR_LEAN * pose;
     for (let i = 0; i < BRICK_COUNT; i++) {
       bricks[i].mesh.rotation.z  = rz;
       bricks[i].edges.rotation.z = rz;
-      const wx = brickGroupX[side] + bricks[i].localX + BRICK_MOTION_DX[i] * mag;
-      bricks[i].mesh.position.x  = wx;
-      bricks[i].edges.position.x = wx;
-      const wy = BRICK_Y + BRICK_CONFIGS[i].dy + BRICK_MOTION_DY[i] * mag;
-      bricks[i].mesh.position.y  = wy;
-      bricks[i].edges.position.y = wy;
+      let dx = 0, dy = 0;
+      if (i === 0 || i === 4) {
+        dx = -0.040 * pose;          // legs trail opposite to movement
+        dy = -0.016 * mag;           // legs drop at speed
+      } else if (i === 1) {
+        dx = -0.012 * mag;
+        dy =  0.072 * Math.max(0, -pose);  // left arm rises when moving left (front arm)
+      } else if (i === 3) {
+        dx =  0.012 * mag;
+        dy =  0.072 * Math.max(0,  pose);  // right arm rises when moving right (front arm)
+      }
+      bricks[i].mesh.position.x  = brickGroupX[side] + bricks[i].localX + dx;
+      bricks[i].edges.position.x = brickGroupX[side] + bricks[i].localX + dx;
+      bricks[i].mesh.position.y  = BRICK_Y + BRICK_CONFIGS[i].dy + dy;
+      bricks[i].edges.position.y = BRICK_Y + BRICK_CONFIGS[i].dy + dy;
     }
     for (let j = 0; j < body.length; j++) {
       body[j].mesh.rotation.z  = rz;
       body[j].edges.rotation.z = rz;
     }
+    // Head leads the lean — translates further in movement direction
+    body[0].mesh.position.x  = brickGroupX[side] + 0.050 * pose;
+    body[0].edges.position.x = brickGroupX[side] + 0.050 * pose;
   }
 }
 
