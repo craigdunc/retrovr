@@ -448,6 +448,14 @@ p2Bricks[2].state = 'white'; p2Bricks[2].fillMat.color.setHex(0xffffff); p2Brick
 let brickCounts = [BRICK_COUNT, BRICK_COUNT];
 const brickGroupX = [0, 0];
 const dyingBricks = [];
+
+// ── Avatar motion pose ────────────────────────────────────────────────────────
+// rotation.z applied to each brick when fully in "running" state (0=still,1=running)
+const BRICK_MOTION_RZ  = [ 0.38,  0.18,  0.05, -0.18, -0.38 ];
+const BODY_MOTION_RZ   = [ 0.07,  0.11 ];  // head, torso
+const avatarPose       = [0, 0];             // per-side lerp value
+const _prevHeadPos     = new THREE.Vector3();
+let   _prevP2GroupX    = 0;
 let _centerWin = null;
 
 function resetBricks() {
@@ -1067,6 +1075,42 @@ function updateDyingBricks(dt) {
   }
 }
 
+function updateAvatarPose(dt) {
+  // P1: driven by XR head velocity (silent on desktop — no VR, no movement)
+  let p1Moving = false;
+  if (renderer.xr.isPresenting) {
+    const hPos = renderer.xr.getCamera().position;
+    const vel  = hPos.distanceTo(_prevHeadPos) / Math.max(dt, 0.001);
+    _prevHeadPos.copy(hPos);
+    p1Moving = vel > 0.25;
+  }
+
+  // P2: driven by how fast the CPU brick group is sliding
+  const p2GroupVel = Math.abs(brickGroupX[1] - _prevP2GroupX) / Math.max(dt, 0.001);
+  _prevP2GroupX    = brickGroupX[1];
+  const p2Moving   = p2GroupVel > 0.04;
+
+  const speed = 4.0;
+  avatarPose[0] += ((p1Moving ? 1 : 0) - avatarPose[0]) * Math.min(speed * dt, 1);
+  avatarPose[1] += ((p2Moving ? 1 : 0) - avatarPose[1]) * Math.min(speed * dt, 1);
+
+  for (let side = 0; side < 2; side++) {
+    const bricks = side === 0 ? p1Bricks : p2Bricks;
+    const body   = side === 0 ? p1Body   : p2Body;
+    const pose   = avatarPose[side];
+    for (let i = 0; i < BRICK_COUNT; i++) {
+      const rz = BRICK_MOTION_RZ[i] * pose;
+      bricks[i].mesh.rotation.z  = rz;
+      bricks[i].edges.rotation.z = rz;
+    }
+    for (let j = 0; j < body.length; j++) {
+      const rz = BODY_MOTION_RZ[j] * pose;
+      body[j].mesh.rotation.z  = rz;
+      body[j].edges.rotation.z = rz;
+    }
+  }
+}
+
 function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
   const front = brickZ + (BRICK_D / 2 + BALL_R) * (-velZSign);
   const back  = brickZ + (BRICK_D / 2 + BALL_R) * ( velZSign);
@@ -1294,6 +1338,7 @@ renderer.setAnimationLoop((time, frame) => {
   // P1 brick group tracks human head
   const headX = renderer.xr.isPresenting ? renderer.xr.getCamera().position.x : camera.position.x;
   updateBrickGroupX(0, headX);
+  updateAvatarPose(dt);
 
   if (vrStartMesh.visible) vrStartMat.opacity = (time % 1200 < 600) ? 1.0 : 0.0;
 
