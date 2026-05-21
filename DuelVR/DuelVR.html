@@ -955,7 +955,7 @@ function updateXRPaddles(frame) {
     }
     const target = isRight ? p1 : p1b;
     target.targetX          = wx * P1_VR_SENS;
-    target.targetY          = MID_Y + (wy - (ARENA_FULL_POS.y + MID_Y)) * P1_VR_SENS;
+    target.targetY          = wy - ARENA_FULL_POS.y;
     const realH = isRight ? realHand1 : realHand1b;
     realH.visible = true;
     realH.position.set(wx, wy - REAL_HAND_R, wz);
