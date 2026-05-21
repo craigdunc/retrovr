@@ -263,6 +263,21 @@ function addSideWall(x) {
 addSideWall(-AW / 2);
 addSideWall( AW / 2);
 
+// Floor rings — decorative concentric circles at each player's position
+{
+  const y = AY + 0.003;
+  const radii = [0.15, 0.28, 0.42, 0.56];
+  for (const [centerZ, color] of [[BRICK_Z1, 0x2266cc], [BRICK_Z2, 0x2266cc]]) {
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.40, depthWrite: false });
+    for (const r of radii) {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.004, 6, 64), mat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(0, y, centerZ);
+      arenaRoot.add(ring);
+    }
+  }
+}
+
 // End-wall flash (repurposed: flashes when a brick is hit on that side)
 const p1WallMat = new THREE.MeshBasicMaterial({ color: 0x3377dd, transparent: true, opacity: 0, side: THREE.DoubleSide });
 const p2WallMat = new THREE.MeshBasicMaterial({ color: 0xdd3355, transparent: true, opacity: 0, side: THREE.DoubleSide });
