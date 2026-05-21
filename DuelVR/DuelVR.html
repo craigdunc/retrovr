@@ -134,10 +134,10 @@ const AW = 1.525;
 const AH = 0.762;
 const AD = 2.74;
 const AY = 0.76;
-const BALL_R       = 0.060;
-const PADDLE_R     = 0.060;
-const COIN_R       = 0.022;   // tiny coin-puck radius when hand is past front plane
-const PADDLE_INSET = 0.15;
+const BALL_R       = 0.040;
+const PADDLE_R     = 0.040;
+const COIN_R       = 0.015;   // tiny coin-puck radius when hand is past front plane
+const PADDLE_INSET = 0.35;
 const TILT_Z_BACK  = 0.20;              // hand depth ahead of head (m) = full vertical paddle
 const TILT_Z_FRONT = 0.24;              // hand depth ahead of head (m) = full horizontal coin + laser
 const P1_SENS      = 1.8;
@@ -153,16 +153,16 @@ const BRICK_SCALE = 0.60;
 // Per-brick [w, h] — avatar arm-spread pose (idx 0=outer-left … 4=outer-right)
 // dy = Y offset from BRICK_Y (outer bricks hang below arm line, tops aligned)
 const BRICK_CONFIGS = [
-  { w: 0.058, h: 0.150, dy: -0.026 },  // outer (leg/pillar — hangs below)
-  { w: 0.058, h: 0.098, dy:  0     },  // inner (arm)
-  { w: 0.142, h: 0.098, dy:  0     },  // centre (chest / life brick)
-  { w: 0.058, h: 0.098, dy:  0     },  // inner (arm)
-  { w: 0.058, h: 0.150, dy: -0.026 },  // outer (leg/pillar — hangs below)
+  { w: 0.032, h: 0.083, dy: -0.014 },  // outer (arm — hangs below)
+  { w: 0.032, h: 0.054, dy:  0     },  // inner (shoulder)
+  { w: 0.078, h: 0.054, dy:  0     },  // centre (chest / life brick)
+  { w: 0.032, h: 0.054, dy:  0     },  // inner (shoulder)
+  { w: 0.032, h: 0.083, dy: -0.014 },  // outer (arm — hangs below)
 ];
 const BRICK_D = 0.08;           // thick enough to prevent tunnelling at max speed
 const BRICK_Y = AY + AH * 0.5; // vertically centred in arena
-const BRICK_Z1 = -BRICK_D / 2;      // P1's bricks flush with z=0 wall (face facing P2 at z=0)
-const BRICK_Z2 = AD + BRICK_D / 2;  // P2's bricks flush with z=AD wall (face facing P1 at z=AD)
+const BRICK_Z1 = 0.40;       // P1's bricks 40cm into arena
+const BRICK_Z2 = AD - 0.40;  // P2's bricks 40cm into arena from far wall
 
 const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.01, 60);
 camera.position.set(2.6, 3.4, -0.7);
@@ -420,8 +420,8 @@ function makeBricks(brickZ, fillColor, edgeColor) {
 
 // Non-destructible avatar body parts: head (above chest) + torso (below chest)
 const AVATAR_BODY_PARTS = [
-  { localX: 0, localY: BRICK_Y + 0.128, w: 0.142, h: 0.098 },  // head — 30mm gap above body
-  { localX: 0, localY: BRICK_Y - 0.189, w: 0.142, h: 0.280 },  // torso/legs
+  { localX: 0, localY: BRICK_Y + 0.070, w: 0.078, h: 0.054 },  // head
+  { localX: 0, localY: BRICK_Y - 0.104, w: 0.078, h: 0.154 },  // torso/legs
 ];
 function makeAvatarBody(brickZ, fillColor, edgeColor) {
   return AVATAR_BODY_PARTS.map(({ localX, localY, w, h }) => {
@@ -1104,15 +1104,15 @@ function updateAvatarPose(dt) {
       bricks[i].edges.rotation.z = rz;
       let dx = 0, dy = 0;
       if (i === 0) {
-        dx = -0.040 * pose;
-        dy =  0.072 * Math.max(0, -pose);  // left arm rises when moving left (front arm)
+        dx = -0.022 * pose;
+        dy =  0.040 * Math.max(0, -pose);  // left arm rises when moving left (front arm)
       } else if (i === 4) {
-        dx = -0.040 * pose;
-        dy =  0.072 * Math.max(0,  pose);  // right arm rises when moving right (front arm)
+        dx = -0.022 * pose;
+        dy =  0.040 * Math.max(0,  pose);  // right arm rises when moving right (front arm)
       } else if (i === 1) {
-        dx = -0.012 * mag;
+        dx = -0.007 * mag;
       } else if (i === 3) {
-        dx =  0.012 * mag;
+        dx =  0.007 * mag;
       }
       bricks[i].mesh.position.x  = brickGroupX[side] + bricks[i].localX + dx;
       bricks[i].edges.position.x = brickGroupX[side] + bricks[i].localX + dx;
@@ -1124,8 +1124,8 @@ function updateAvatarPose(dt) {
       body[j].edges.rotation.z = rz;
     }
     // Head leads the lean — translates further in movement direction
-    body[0].mesh.position.x  = brickGroupX[side] + 0.050 * pose;
-    body[0].edges.position.x = brickGroupX[side] + 0.050 * pose;
+    body[0].mesh.position.x  = brickGroupX[side] + 0.028 * pose;
+    body[0].edges.position.x = brickGroupX[side] + 0.028 * pose;
   }
 }
 
