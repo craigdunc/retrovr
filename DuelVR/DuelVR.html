@@ -219,21 +219,20 @@ function startArenaAnim(fromPos, fromSc, fromRotY, toPos, toSc, toRotY, onDone) 
 function addTableFace(y, normalUp) {
   const surf = new THREE.Mesh(
     new THREE.PlaneGeometry(AW, AD),
-    new THREE.MeshBasicMaterial({ color: 0x1d6b28, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+    new THREE.MeshBasicMaterial({ color: 0x071428, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
   );
   surf.rotation.x = -Math.PI / 2;
   surf.position.set(0, y, AD / 2);
   arenaRoot.add(surf);
   const LH = 0.002, LW = 0.012;
   const ly = y + (normalUp ? LH / 2 : -LH / 2);
-  const wm = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const wm = new THREE.MeshBasicMaterial({ color: 0x1a66cc });
   const addLine = (w, d, x, z) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, LH, d), wm);
     m.position.set(x, ly, z); arenaRoot.add(m);
   };
   addLine(LW, AD + LW, -AW / 2, AD / 2); addLine(LW, AD + LW, AW / 2, AD / 2);
   addLine(AW + LW, LW, 0, 0);  addLine(AW + LW, LW, 0, AD);
-  addLine(AW, LW, 0, AD / 2);  addLine(LW, AD, 0, AD / 2);
 }
 addTableFace(AY, true);
 addTableFace(AY + AH, false);
@@ -242,20 +241,20 @@ function addSideWall(x) {
   const sign = x > 0 ? 1 : -1;
   const geo  = new THREE.PlaneGeometry(AD, AH);
   const fill = new THREE.Mesh(geo,
-    new THREE.MeshBasicMaterial({ color: 0x1d6b28, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
+    new THREE.MeshBasicMaterial({ color: 0x071428, transparent: true, opacity: 0.45, side: THREE.DoubleSide })
   );
   fill.rotation.y = -sign * Math.PI / 2;
   fill.position.set(x, AY + AH / 2, AD / 2);
   arenaRoot.add(fill);
   const edgeLines = new THREE.LineSegments(
-    new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x2a9436 })
+    new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x1a66cc })
   );
   edgeLines.rotation.y = -sign * Math.PI / 2;
   edgeLines.position.set(x, AY + AH / 2, AD / 2);
   arenaRoot.add(edgeLines);
   const cl = new THREE.Mesh(
     new THREE.BoxGeometry(0.002, AH, 0.012),
-    new THREE.MeshBasicMaterial({ color: 0xffffff })
+    new THREE.MeshBasicMaterial({ color: 0x1a66cc })
   );
   cl.position.set(x + (sign > 0 ? -0.002 : 0.002), AY + AH / 2, AD / 2);
   arenaRoot.add(cl);
