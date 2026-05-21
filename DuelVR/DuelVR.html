@@ -382,11 +382,12 @@ const ghostRing2b = makeGhostRing(0xffbb66);
 
 // Real-scale hand indicators — track actual VR hand position 1:1, no game mechanics
 function makeRealHandRing(color) {
-  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, depthWrite: false });
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.75, depthWrite: false, depthTest: false });
   const torus = new THREE.Mesh(new THREE.TorusGeometry(REAL_HAND_R, 0.008, 8, 40), mat);
   torus.position.y = REAL_HAND_R;
+  torus.renderOrder = 10;
   const g = new THREE.Group(); g.add(torus); g.visible = false;
-  arenaRoot.add(g); return g;
+  scene.add(g); return g;
 }
 const realHand1  = makeRealHandRing(0x88bbff);
 const realHand1b = makeRealHandRing(0x66ddff);
@@ -968,7 +969,7 @@ function updateXRPaddles(frame) {
     target.targetY          = ARENA_CY + (wy - ARENA_CY) * P1_VR_SENS;
     const realH = isRight ? realHand1 : realHand1b;
     realH.visible = true;
-    realH.position.set(wx, wy - REAL_HAND_R, wz - ARENA_FULL_POS.z);
+    realH.position.set(wx, wy - REAL_HAND_R, wz);
     target.targetTilt       = t * Math.PI / 2;
     target.targetScale      = 1;
     target.targetBrightness = t;
