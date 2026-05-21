@@ -1103,15 +1103,16 @@ function updateAvatarPose(dt) {
       bricks[i].mesh.rotation.z  = rz;
       bricks[i].edges.rotation.z = rz;
       let dx = 0, dy = 0;
-      if (i === 0 || i === 4) {
-        dx = -0.040 * pose;          // legs trail opposite to movement
-        dy = -0.016 * mag;           // legs drop at speed
+      if (i === 0) {
+        dx = -0.040 * pose;
+        dy =  0.072 * Math.max(0,  pose);  // left arm rises when moving right (front arm)
+      } else if (i === 4) {
+        dx = -0.040 * pose;
+        dy =  0.072 * Math.max(0, -pose);  // right arm rises when moving left (front arm)
       } else if (i === 1) {
         dx = -0.012 * mag;
-        dy =  0.072 * Math.max(0,  pose);  // left arm rises when moving right (front arm)
       } else if (i === 3) {
         dx =  0.012 * mag;
-        dy =  0.072 * Math.max(0, -pose);  // right arm rises when moving left (front arm)
       }
       bricks[i].mesh.position.x  = brickGroupX[side] + bricks[i].localX + dx;
       bricks[i].edges.position.x = brickGroupX[side] + bricks[i].localX + dx;
