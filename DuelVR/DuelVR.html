@@ -420,7 +420,7 @@ function makeBricks(brickZ, fillColor, edgeColor) {
 
 // Non-destructible avatar body parts: head (above chest) + torso (below chest)
 const AVATAR_BODY_PARTS = [
-  { localX: 0, localY: BRICK_Y + 0.098, w: 0.142, h: 0.098 },  // head
+  { localX: 0, localY: BRICK_Y + 0.128, w: 0.142, h: 0.098 },  // head — 30mm gap above body
   { localX: 0, localY: BRICK_Y - 0.189, w: 0.142, h: 0.280 },  // torso/legs
 ];
 function makeAvatarBody(brickZ, fillColor, edgeColor) {
@@ -451,8 +451,10 @@ const dyingBricks = [];
 
 // ── Avatar motion pose ────────────────────────────────────────────────────────
 // rotation.z applied to each brick when fully in "running" state (0=still,1=running)
-const BRICK_MOTION_RZ  = [ 0.38,  0.18,  0.05, -0.18, -0.38 ];
-const BODY_MOTION_RZ   = [ 0.07,  0.11 ];  // head, torso
+const BRICK_MOTION_RZ  = [ 0.45,  0.20,  0.06, -0.20, -0.45 ];
+const BRICK_MOTION_DX  = [-0.030,-0.014,  0,    0.014, 0.030 ];  // arms spread outward
+const BRICK_MOTION_DY  = [-0.020,-0.008,  0,   -0.008,-0.020 ];  // outer bricks drop
+const BODY_MOTION_RZ   = [ 0.10,  0.15 ];  // head, torso
 const avatarPose       = [0, 0];             // per-side lerp value
 const _prevHeadPos     = new THREE.Vector3();
 let   _prevP2GroupX    = 0;
@@ -1102,6 +1104,12 @@ function updateAvatarPose(dt) {
       const rz = BRICK_MOTION_RZ[i] * pose;
       bricks[i].mesh.rotation.z  = rz;
       bricks[i].edges.rotation.z = rz;
+      const wx = brickGroupX[side] + bricks[i].localX + BRICK_MOTION_DX[i] * pose;
+      bricks[i].mesh.position.x  = wx;
+      bricks[i].edges.position.x = wx;
+      const wy = BRICK_Y + BRICK_CONFIGS[i].dy + BRICK_MOTION_DY[i] * pose;
+      bricks[i].mesh.position.y  = wy;
+      bricks[i].edges.position.y = wy;
     }
     for (let j = 0; j < body.length; j++) {
       const rz = BODY_MOTION_RZ[j] * pose;
