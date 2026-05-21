@@ -278,9 +278,14 @@ const _glowTex = (() => {
 })();
 
 function makeBallObject(glowColor = 0xffffff) {
-  const ballMat  = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
-  const mesh     = new THREE.Mesh(new THREE.CircleGeometry(BALL_R, 24), ballMat);
+  const ballMat  = new THREE.MeshBasicMaterial({ color: 0x050510, transparent: true, opacity: 1.0, side: THREE.DoubleSide });
+  const mesh     = new THREE.Mesh(new THREE.CircleGeometry(BALL_R, 40), ballMat);
   mesh.rotation.x = -Math.PI / 2;
+  const ringMat = new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 1.0 });
+  for (const rf of [0.25, 0.50, 0.75, 1.0]) {
+    const r = new THREE.Mesh(new THREE.TorusGeometry(BALL_R * rf, rf === 1.0 ? 0.005 : 0.003, 8, 32), ringMat);
+    mesh.add(r);
+  }
   const glowMat  = new THREE.SpriteMaterial({ map: _glowTex, color: glowColor, transparent: true, depthWrite: false });
   const sprite   = new THREE.Sprite(glowMat);
   sprite.scale.set(0.30, 0.30, 1); mesh.add(sprite);
@@ -302,6 +307,7 @@ function makeBallObject(glowColor = 0xffffff) {
     mesh,
     setFade(v) {
       ballMat.transparent = v < 1; ballMat.opacity = v;
+      ringMat.transparent = v < 1; ringMat.opacity = v;
       glowMat.opacity = v;
       for (let i = 0; i < TRAIL; i++) tMats[i].opacity = v * (1 - i / TRAIL) * 0.32;
     },
@@ -318,23 +324,25 @@ function makeBallObject(glowColor = 0xffffff) {
 // ── Paddles — two per side ────────────────────────────────────────────────────
 function makePaddle(faceColor, rimColor) {
   const g = new THREE.Group();
-  const faceMat = new THREE.MeshBasicMaterial({ color: faceColor, transparent: true, opacity: 0.35, side: THREE.DoubleSide });
-  const face = new THREE.Mesh(new THREE.CircleGeometry(PADDLE_R, 40), faceMat);
-  const rim  = new THREE.Mesh(new THREE.TorusGeometry(PADDLE_R, 0.005, 8, 40), new THREE.MeshBasicMaterial({ color: rimColor }));
-  // Offset meshes up by PADDLE_R so the group origin sits at the bottom edge.
-  // rotation.x and scale then both pivot/shrink around that bottom point.
+  const darkMat = new THREE.MeshBasicMaterial({ color: 0x050510, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false });
+  const face = new THREE.Mesh(new THREE.CircleGeometry(PADDLE_R, 40), darkMat);
   face.position.y = PADDLE_R;
-  rim.position.y  = PADDLE_R;
-  g.add(face, rim);
+  g.add(face);
+  const faceMat = new THREE.MeshBasicMaterial({ color: rimColor, transparent: true, opacity: 0.70, side: THREE.DoubleSide });
+  for (const rf of [0.22, 0.44, 0.66, 0.88, 1.0]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(PADDLE_R * rf, rf === 1.0 ? 0.005 : 0.003, 8, 40), faceMat);
+    ring.position.y = PADDLE_R;
+    g.add(ring);
+  }
   return { group: g, faceMat };
 }
 const { group: paddle1,  faceMat: p1FaceMat  } = makePaddle(0x3377dd, 0x88bbff);
 const { group: paddle1b, faceMat: p1bFaceMat } = makePaddle(0x22aacc, 0x66ddff);
 const _whiteColor  = new THREE.Color(0xffffff);
-const _p1BaseColor = new THREE.Color(0x3377dd);
-const _p1bBaseColor = new THREE.Color(0x22aacc);
-const _p2BaseColor  = new THREE.Color(0xdd3355);
-const _p2bBaseColor = new THREE.Color(0xdd7722);
+const _p1BaseColor  = new THREE.Color(0x88bbff);
+const _p1bBaseColor = new THREE.Color(0x66ddff);
+const _p2BaseColor  = new THREE.Color(0xff88aa);
+const _p2bBaseColor = new THREE.Color(0xffbb66);
 const { group: paddle2,  faceMat: p2FaceMat  } = makePaddle(0xdd3355, 0xff88aa);
 const { group: paddle2b, faceMat: p2bFaceMat } = makePaddle(0xdd7722, 0xffbb66);
 
@@ -1228,8 +1236,8 @@ renderer.setAnimationLoop((time, frame) => {
   p1b.brightness += (p1b.targetBrightness - p1b.brightness) * ts;
   p1FaceMat.color.lerpColors(_p1BaseColor,  _whiteColor, p1.brightness);
   p1bFaceMat.color.lerpColors(_p1bBaseColor, _whiteColor, p1b.brightness);
-  p1FaceMat.opacity  = 0.35 + p1.brightness  * 0.55;
-  p1bFaceMat.opacity = 0.35 + p1b.brightness * 0.55;
+  p1FaceMat.opacity  = 0.70 + p1.brightness  * 0.30;
+  p1bFaceMat.opacity = 0.70 + p1b.brightness * 0.30;
 
   p2.tilt   += (p2.targetTilt   - p2.tilt)   * ts;
   p2b.tilt  += (p2b.targetTilt  - p2b.tilt)  * ts;
@@ -1239,8 +1247,8 @@ renderer.setAnimationLoop((time, frame) => {
   p2b.brightness += (p2b.targetBrightness - p2b.brightness) * ts;
   p2FaceMat.color.lerpColors(_p2BaseColor,  _whiteColor, p2.brightness);
   p2bFaceMat.color.lerpColors(_p2bBaseColor, _whiteColor, p2b.brightness);
-  p2FaceMat.opacity  = 0.35 + p2.brightness  * 0.55;
-  p2bFaceMat.opacity = 0.35 + p2b.brightness * 0.55;
+  p2FaceMat.opacity  = 0.70 + p2.brightness  * 0.30;
+  p2bFaceMat.opacity = 0.70 + p2b.brightness * 0.30;
 
   updateCpu(dt);   // also calls updateBrickGroupX(1, p2HeadX)
   updateCpuShooting(dt);
@@ -1261,7 +1269,7 @@ renderer.setAnimationLoop((time, frame) => {
   for (let i = 0; i < 4; i++) {
     if (paddleFlash[i] > 0) {
       paddleFlash[i] = Math.max(0, paddleFlash[i] - dt / 1.2);
-      faceMats[i].opacity = 0.35 + paddleFlash[i] * 0.55;
+      faceMats[i].opacity = 0.70 + paddleFlash[i] * 0.30;
     }
   }
 
