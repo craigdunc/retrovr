@@ -852,7 +852,7 @@ function updateXRPaddles(frame) {
 
     // Laser: hands show only when fully extended; controllers show from first trigger pull
     const laser = isRight ? laser1 : laser1b;
-    const showLaser = src.hand ? target.laserOn : (t > 0.1);
+    const showLaser = t > 0.1;
     if (showLaser && src.targetRaySpace) {
       const rayPose = frame.getPose(src.targetRaySpace, rs);
       if (rayPose) {
