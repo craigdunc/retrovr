@@ -567,8 +567,6 @@ function scorePoint(scorer, pts = 1) {
   soundScore();
   if (p1Score >= WIN_SCORE || p2Score >= WIN_SCORE) {
     endGame(p1Score >= WIN_SCORE ? 1 : 0);
-  } else {
-    for (const b of balls) { b.state='idle'; if(b.shooterPaddle){b.shooterPaddle.visible=true;b.shooterPaddle=null;} b.clearTrail(); }
   }
 }
 
