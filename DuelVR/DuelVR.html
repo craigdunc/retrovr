@@ -132,12 +132,12 @@ scene.add(arenaRoot);
 // ── Arena constants ───────────────────────────────────────────────────────────
 const AW = 1.525;
 const AH = 0.762;
-const AD = 2.74;
+const AD = 4.5;
 const AY = 0.76;
 const BALL_R       = 0.040;
 const PADDLE_R     = 0.040;
 const COIN_R       = 0.015;   // tiny coin-puck radius when hand is past front plane
-const PADDLE_INSET = 0.35;
+const PADDLE_INSET = 1.0;
 const TILT_Z_BACK  = 0.20;              // hand depth ahead of head (m) = full vertical paddle
 const TILT_Z_FRONT = 0.24;              // hand depth ahead of head (m) = full horizontal coin + laser
 const P1_SENS      = 1.8;
@@ -161,8 +161,8 @@ const BRICK_CONFIGS = [
 ];
 const BRICK_D = 0.08;           // thick enough to prevent tunnelling at max speed
 const BRICK_Y = AY + 0.181;    // torso base sits on arena floor
-const BRICK_Z1 = 0.40;       // P1's bricks 40cm into arena
-const BRICK_Z2 = AD - 0.40;  // P2's bricks 40cm into arena from far wall
+const BRICK_Z1 = 1.2;        // P1's bricks 1.2m into arena
+const BRICK_Z2 = AD - 1.2;   // P2's bricks 1.2m into arena from far wall
 
 const camera = new THREE.PerspectiveCamera(52, innerWidth / innerHeight, 0.01, 60);
 camera.position.set(2.6, 3.4, -0.7);
@@ -200,7 +200,7 @@ function startCamAnim(fromPos, fromTgt, toPos, toTgt, onDone) {
 const ARENA_MINI_POS    = new THREE.Vector3(0, 0.75, 0.6);
 const ARENA_MINI_SCALE  = 0.18;
 const ARENA_MINI_ROT_Y  = Math.PI / 4;
-const ARENA_FULL_POS    = new THREE.Vector3(0, 0, 0.4);
+const ARENA_FULL_POS    = new THREE.Vector3(0, 0, -0.8);
 const ARENA_FULL_SCALE  = 1.0;
 const ARENA_FULL_ROT_Y  = 0;
 const ARENA_ANIM_DURATION = 1.5;
@@ -252,12 +252,6 @@ function addSideWall(x) {
   edgeLines.rotation.y = -sign * Math.PI / 2;
   edgeLines.position.set(x, AY + AH / 2, AD / 2);
   arenaRoot.add(edgeLines);
-  const cl = new THREE.Mesh(
-    new THREE.BoxGeometry(0.002, AH, 0.012),
-    new THREE.MeshBasicMaterial({ color: 0x1a66cc })
-  );
-  cl.position.set(x + (sign > 0 ? -0.002 : 0.002), AY + AH / 2, AD / 2);
-  arenaRoot.add(cl);
 }
 addSideWall(-AW / 2);
 addSideWall( AW / 2);
