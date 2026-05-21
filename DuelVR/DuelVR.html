@@ -1105,10 +1105,10 @@ function updateAvatarPose(dt) {
       let dx = 0, dy = 0;
       if (i === 0) {
         dx = -0.040 * pose;
-        dy =  0.072 * Math.max(0,  pose);  // left arm rises when moving right (front arm)
+        dy =  0.072 * Math.max(0, -pose);  // left arm rises when moving left (front arm)
       } else if (i === 4) {
         dx = -0.040 * pose;
-        dy =  0.072 * Math.max(0, -pose);  // right arm rises when moving left (front arm)
+        dy =  0.072 * Math.max(0,  pose);  // right arm rises when moving right (front arm)
       } else if (i === 1) {
         dx = -0.012 * mag;
       } else if (i === 3) {
