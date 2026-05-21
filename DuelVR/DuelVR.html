@@ -835,19 +835,25 @@ function updateXRPaddles(frame) {
       if (pose) { wx = pose.transform.position.x; wy = pose.transform.position.y; wz = pose.transform.position.z; }
     }
     if (wx === undefined) continue;
-    const depth = wz - headZ;
-    const t = THREE.MathUtils.clamp((depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK), 0, 1);
+    let t;
+    if (src.hand) {
+      const depth = wz - headZ;
+      t = THREE.MathUtils.clamp((depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK), 0, 1);
+    } else {
+      t = src.gamepad?.buttons[0]?.value ?? 0;  // index trigger 0→1
+    }
     const target = isRight ? p1 : p1b;
-    target.targetX     = wx * P1_SENS;
-    target.targetY     = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
+    target.targetX          = wx * P1_SENS;
+    target.targetY          = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
     target.targetTilt       = t * Math.PI / 2;
     target.targetScale      = THREE.MathUtils.lerp(1.0, COIN_R / PADDLE_R, t);
     target.targetBrightness = t;
-    target.laserOn          = t >= 1;
+    target.laserOn          = src.hand ? (t >= 1) : (t >= 0.95);
 
-    // Update targetRay laser — follows pointing direction of hand/controller
+    // Laser: hands show only when fully extended; controllers show from first trigger pull
     const laser = isRight ? laser1 : laser1b;
-    if (target.laserOn && src.targetRaySpace) {
+    const showLaser = src.hand ? target.laserOn : (t > 0.1);
+    if (showLaser && src.targetRaySpace) {
       const rayPose = frame.getPose(src.targetRaySpace, rs);
       if (rayPose) {
         const rp = rayPose.transform.position, ro = rayPose.transform.orientation;
