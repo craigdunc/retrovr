@@ -190,7 +190,7 @@ function startCamAnim(fromPos, fromTgt, toPos, toTgt, onDone) {
 const ARENA_MINI_POS    = new THREE.Vector3(0, 0.75, 0.6);
 const ARENA_MINI_SCALE  = 0.18;
 const ARENA_MINI_ROT_Y  = Math.PI / 4;
-const ARENA_FULL_POS    = new THREE.Vector3(0, 0, 0);
+const ARENA_FULL_POS    = new THREE.Vector3(0, 0, 0.4);
 const ARENA_FULL_SCALE  = 1.0;
 const ARENA_FULL_ROT_Y  = 0;
 const ARENA_ANIM_DURATION = 1.5;
@@ -337,6 +337,20 @@ const _p2BaseColor  = new THREE.Color(0xdd3355);
 const _p2bBaseColor = new THREE.Color(0xdd7722);
 const { group: paddle2,  faceMat: p2FaceMat  } = makePaddle(0xdd3355, 0xff88aa);
 const { group: paddle2b, faceMat: p2bFaceMat } = makePaddle(0xdd7722, 0xffbb66);
+
+function makeGhostRing(color) {
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.28, depthWrite: false });
+  const torus = new THREE.Mesh(new THREE.TorusGeometry(PADDLE_R, 0.004, 8, 40), mat);
+  torus.position.y = PADDLE_R;
+  const g = new THREE.Group();
+  g.add(torus); g.visible = false;
+  arenaRoot.add(g);
+  return g;
+}
+const ghostRing1  = makeGhostRing(0x88bbff);
+const ghostRing1b = makeGhostRing(0x66ddff);
+const ghostRing2  = makeGhostRing(0xff88aa);
+const ghostRing2b = makeGhostRing(0xffbb66);
 arenaRoot.add(paddle1, paddle1b, paddle2, paddle2b);
 const paddleFlash = [0, 0, 0, 0];
 
@@ -930,10 +944,10 @@ function applyP1BrickEffect(idx) {
 }
 
 function applyP2BrickEffect(idx) {
-  if      (idx === 0) { p2b.deleted = true;  paddle2b.visible = false; }
-  else if (idx === 1) { p2b.speedMult = 0.5; }
-  else if (idx === 3) { p2.speedMult  = 0.5; }
-  else if (idx === 4) { p2.deleted  = true;  paddle2.visible  = false; }
+  if      (idx === 0) { paddleFlash[3] = 1.0; setTimeout(() => { if (gameState === 'playing') { p2b.deleted = true; paddle2b.visible = false; for (const b of balls) if (b.shooterPaddle === paddle2b) b.shooterPaddle = null; } }, 280); }
+  else if (idx === 1) { paddleFlash[3] = 1.0; p2b.speedMult = 0.5; }
+  else if (idx === 3) { paddleFlash[2] = 1.0; p2.speedMult  = 0.5; }
+  else if (idx === 4) { paddleFlash[2] = 1.0; setTimeout(() => { if (gameState === 'playing') { p2.deleted  = true; paddle2.visible  = false; for (const b of balls) if (b.shooterPaddle === paddle2)  b.shooterPaddle = null; } }, 280); }
 }
 
 function deflectBall(b, paddleX, paddleY, newZSign, flashIdx) {
@@ -1037,7 +1051,7 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
           gameState = 'centerwin';
           _centerWin = { sideIdx, scorer: 1 - sideIdx, brick, phase: 'flash', flashCount: 0, timer: 0.18, fadeTotal: 0.55 };
         } else {
-          soundBrick();
+          soundBoom();
           updateVRBricks();
           if (sideIdx === 0) applyP1BrickEffect(i);
           else               applyP2BrickEffect(i);
@@ -1157,6 +1171,7 @@ function blip(freq, dur, vol = 0.35) {
 const soundPaddle = () => blip(480, 0.08, 0.4);
 const soundWall   = () => blip(240, 0.06, 0.2);
 const soundBrick  = () => { blip(320, 0.07, 0.45); setTimeout(() => blip(180, 0.12, 0.35), 70); };
+const soundBoom   = () => { blip(100, 0.25, 0.9); setTimeout(() => blip(65, 0.35, 0.7), 30); setTimeout(() => blip(40, 0.45, 0.5), 80); };
 const soundCenterBrick = () => {
   blip(220, 0.3, 0.5);
   setTimeout(() => blip(330, 0.35, 0.55), 150);
@@ -1261,6 +1276,11 @@ renderer.setAnimationLoop((time, frame) => {
   paddle1b.position.set(p1b.x, p1b.y  - PADDLE_R, PADDLE_INSET);  paddle1b.rotation.set(p1b.tilt, 0, 0);  paddle1b.scale.setScalar(p1b.scale);
   paddle2.position.set(p2.x,   p2.y   - PADDLE_R, AD - PADDLE_INSET);  paddle2.rotation.set(-p2.tilt,  Math.PI, 0);  paddle2.scale.setScalar(p2.scale);
   paddle2b.position.set(p2b.x, p2b.y  - PADDLE_R, AD - PADDLE_INSET);  paddle2b.rotation.set(-p2b.tilt, Math.PI, 0);  paddle2b.scale.setScalar(p2b.scale);
+
+  ghostRing1.visible  = balls[0].state === 'flying'; ghostRing1.position.set(p1.x,   p1.y   - PADDLE_R, PADDLE_INSET);
+  ghostRing1b.visible = balls[1].state === 'flying'; ghostRing1b.position.set(p1b.x, p1b.y  - PADDLE_R, PADDLE_INSET);
+  ghostRing2.visible  = balls[2].state === 'flying'; ghostRing2.position.set(p2.x,   p2.y   - PADDLE_R, AD - PADDLE_INSET);
+  ghostRing2b.visible = balls[3].state === 'flying'; ghostRing2b.position.set(p2b.x, p2b.y  - PADDLE_R, AD - PADDLE_INSET);
   // Laser visibility is managed inside updateXRPaddles; hide both outside VR
   if (!renderer.xr.isPresenting) { laser1.line.visible = false; laser1b.line.visible = false; }
 
