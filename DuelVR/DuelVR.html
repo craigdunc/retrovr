@@ -857,7 +857,10 @@ function updateXRPaddles(frame) {
       t = THREE.MathUtils.clamp((depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK), 0, 1);
       if (isRight) handledRight = true; else handledLeft = true;
     } else {
-      t = src.gamepad?.buttons[0]?.value ?? 0;  // index trigger 0→1
+      const depth = wz - headZ;
+      const tDepth   = THREE.MathUtils.clamp((depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK), 0, 1);
+      const tTrigger = src.gamepad?.buttons[0]?.value ?? 0;
+      t = Math.max(tDepth, tTrigger);
     }
     const target = isRight ? p1 : p1b;
     target.targetX          = wx * P1_SENS;
@@ -907,10 +910,17 @@ function shootBall(b, shooter, paddleGroup, dir, shooterZ) {
 
 // ── Ball physics ──────────────────────────────────────────────────────────────
 function applyP1BrickEffect(idx) {
-  if      (idx === 0) { p1.deleted   = true;  paddle1.visible  = false; }
-  else if (idx === 1) { p1.lerpSpeed  = PADDLE_LERP_SLOW; }
-  else if (idx === 3) { p1b.lerpSpeed = PADDLE_LERP_SLOW; }
-  else if (idx === 4) { p1b.deleted  = true;  paddle1b.visible = false; }
+  if (idx === 0) {
+    paddleFlash[0] = 1.0;
+    setTimeout(() => { if (gameState === 'playing') { p1.deleted = true; paddle1.visible = false; } }, 280);
+  } else if (idx === 1) {
+    paddleFlash[0] = 1.0; p1.lerpSpeed = PADDLE_LERP_SLOW;
+  } else if (idx === 3) {
+    paddleFlash[1] = 1.0; p1b.lerpSpeed = PADDLE_LERP_SLOW;
+  } else if (idx === 4) {
+    paddleFlash[1] = 1.0;
+    setTimeout(() => { if (gameState === 'playing') { p1b.deleted = true; paddle1b.visible = false; } }, 280);
+  }
 }
 
 function applyP2BrickEffect(idx) {
