@@ -277,18 +277,18 @@ const _glowTex = (() => {
   return new THREE.CanvasTexture(c);
 })();
 
-function makeBallObject() {
+function makeBallObject(glowColor = 0xffffff) {
   const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(BALL_R, 14, 10),
     new THREE.MeshBasicMaterial({ color: 0xffffff })
   );
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: _glowTex, transparent: true, depthWrite: false }));
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: _glowTex, color: glowColor, transparent: true, depthWrite: false }));
   sprite.scale.set(0.30, 0.30, 1); mesh.add(sprite);
   mesh.visible = false; arenaRoot.add(mesh);
   const tMeshes = Array.from({ length: TRAIL }, (_, i) => {
     const m = new THREE.Mesh(
       new THREE.SphereGeometry(BALL_R * (1 - i / TRAIL) * 0.7, 6, 4),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: (1 - i / TRAIL) * 0.32, depthWrite: false })
+      new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: (1 - i / TRAIL) * 0.32, depthWrite: false })
     );
     arenaRoot.add(m); return m;
   });
@@ -515,7 +515,12 @@ const scoreP1El = document.getElementById('score-p1');
 const scoreP2El = document.getElementById('score-p2');
 
 // balls[0]=p1-right  balls[1]=p1b-left  balls[2]=p2-right  balls[3]=p2b-left
-const balls = Array.from({ length: 4 }, makeBallObject);
+const balls = [
+  makeBallObject(0x4499ff),  // p1 right  — blue glow
+  makeBallObject(0x44ccff),  // p1b left  — cyan-blue glow
+  makeBallObject(0xff3344),  // p2 right  — red glow
+  makeBallObject(0xff6622),  // p2b left  — orange-red glow
+];
 const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
 const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
@@ -1037,8 +1042,8 @@ function updateBall(dt) {
         const r0 = PADDLE_R * p1.scale + BALL_R, r1 = PADDLE_R * p1b.scale + BALL_R;
         const dx0 = b.pos.x-p1.x,  dy0 = b.pos.y-p1.y;
         const dx1 = b.pos.x-p1b.x, dy1 = b.pos.y-p1b.y;
-        if (!p1.deleted  && dx0*dx0+dy0*dy0 < r0*r0) { b.pos.z=PADDLE_INSET+BALL_R; deflectBall(b,p1.x, p1.y, 1,0); triggerBounceRing(p1.x, p1.y, PADDLE_INSET,'z'); continue; }
-        if (!p1b.deleted && dx1*dx1+dy1*dy1 < r1*r1) { b.pos.z=PADDLE_INSET+BALL_R; deflectBall(b,p1b.x,p1b.y,1,1); triggerBounceRing(p1b.x,p1b.y,PADDLE_INSET,'z'); continue; }
+        if (!p1.deleted  && dx0*dx0+dy0*dy0 < r0*r0) { b.pos.z=PADDLE_INSET+BALL_R; deflectBall(b,p1.x, p1.y, 1,0); if (b.shooter===p2||b.shooter===p2b) b.state='returning'; triggerBounceRing(p1.x, p1.y, PADDLE_INSET,'z'); continue; }
+        if (!p1b.deleted && dx1*dx1+dy1*dy1 < r1*r1) { b.pos.z=PADDLE_INSET+BALL_R; deflectBall(b,p1b.x,p1b.y,1,1); if (b.shooter===p2||b.shooter===p2b) b.state='returning'; triggerBounceRing(p1b.x,p1b.y,PADDLE_INSET,'z'); continue; }
       }
       // Bricks first — they're flush with the end walls, same z threshold as wall bounce
       if (b.vel.z > 0 && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { if (b.state!=='idle') b.state='returning'; continue; }
