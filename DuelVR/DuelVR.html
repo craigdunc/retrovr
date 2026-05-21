@@ -1224,8 +1224,8 @@ function updateBall(dt) {
         const r0 = PADDLE_R * p1.scale + BALL_R, r1 = PADDLE_R * p1b.scale + BALL_R;
         const dx0 = b.pos.x-p1.x,  dy0 = b.pos.y-p1.y;
         const dx1 = b.pos.x-p1b.x, dy1 = b.pos.y-p1b.y;
-        if (!p1.deleted  && dx0*dx0+dy0*dy0 < r0*r0) { b.pos.z=PADDLE_INSET+BALL_R; deflectBall(b,p1.x, p1.y, 1,0); if (b.shooter===p2||b.shooter===p2b) b.state='returning'; triggerBounceRing(p1.x, p1.y, PADDLE_INSET,'z'); continue; }
-        if (!p1b.deleted && dx1*dx1+dy1*dy1 < r1*r1) { b.pos.z=PADDLE_INSET+BALL_R; deflectBall(b,p1b.x,p1b.y,1,1); if (b.shooter===p2||b.shooter===p2b) b.state='returning'; triggerBounceRing(p1b.x,p1b.y,PADDLE_INSET,'z'); continue; }
+        if (!p1.deleted  && paddle1.visible  && dx0*dx0+dy0*dy0 < r0*r0) { b.pos.z=PADDLE_INSET+BALL_R; deflectBall(b,p1.x, p1.y, 1,0); if (b.shooter===p2||b.shooter===p2b) b.state='returning'; triggerBounceRing(p1.x, p1.y, PADDLE_INSET,'z'); continue; }
+        if (!p1b.deleted && paddle1b.visible && dx1*dx1+dy1*dy1 < r1*r1) { b.pos.z=PADDLE_INSET+BALL_R; deflectBall(b,p1b.x,p1b.y,1,1); if (b.shooter===p2||b.shooter===p2b) b.state='returning'; triggerBounceRing(p1b.x,p1b.y,PADDLE_INSET,'z'); continue; }
       }
       // Bricks first — they're flush with the end walls, same z threshold as wall bounce
       if (b.vel.z > 0 && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { if (b.state!=='idle') b.state='returning'; continue; }
