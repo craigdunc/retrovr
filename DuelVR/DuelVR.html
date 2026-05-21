@@ -979,9 +979,8 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
 
       if (i === 2 && brick.state === 'white') {
         // Centre brick first hit: tint to attacker colour, stay alive
-        const isP1 = (b.shooter === p1 || b.shooter === p1b);
-        brick.fillMat.color.setHex(isP1 ? 0x2255bb : 0xbb2233);
-        brick.edgeMat.color.setHex(isP1 ? 0x44aaff : 0xff4466);
+        brick.fillMat.color.setHex(sideIdx === 0 ? 0x2255bb : 0xbb2233);
+        brick.edgeMat.color.setHex(sideIdx === 0 ? 0x44aaff : 0xff4466);
         brick.state = 'damaged';
         soundBrick();
         updateVRBricks();
