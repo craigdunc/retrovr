@@ -160,7 +160,7 @@ const BRICK_CONFIGS = [
   { w: 0.032, h: 0.083, dy: -0.014 },  // outer (arm — hangs below)
 ];
 const BRICK_D = 0.08;           // thick enough to prevent tunnelling at max speed
-const BRICK_Y = AY + AH * 0.5; // vertically centred in arena
+const BRICK_Y = AY + 0.181;    // torso base sits on arena floor
 const BRICK_Z1 = 0.40;       // P1's bricks 40cm into arena
 const BRICK_Z2 = AD - 0.40;  // P2's bricks 40cm into arena from far wall
 
@@ -602,7 +602,7 @@ function triggerBounceRing(x, y, z, axis) {
 // ── Game state ────────────────────────────────────────────────────────────────
 const PADDLE_LERP_FAST = 80;   // effectively instant (clamped to 1 at 60 fps)
 const PADDLE_LERP_SLOW = 4;    // ~6% per frame — noticeable drag
-const MID_Y = AY + AH * 0.55;
+const MID_Y = AY + 0.22;  // shoulder height of avatar
 const WIN_SCORE = 11;
 let p1Score = 0, p2Score = 0;
 const scoreEl   = document.getElementById('score');
@@ -631,7 +631,7 @@ function clampPaddle(p) {
   p.y = THREE.MathUtils.clamp(p.y,  AY,      AY + AH);
 }
 
-const DROP_START_Y = AY + AH, DROP_END_Y = AY + AH * 0.55;
+const DROP_START_Y = AY + AH, DROP_END_Y = AY + 0.22;
 const DROP_DURATION = 1.1, PAUSE_DURATION = 0.35;
 
 function setAllPaddlesVisible(v) {
