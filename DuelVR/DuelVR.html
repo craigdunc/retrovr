@@ -1049,16 +1049,12 @@ function updateBall(dt) {
       if (b.vel.z > 0 && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { if (b.state!=='idle') b.state='returning'; continue; }
       if (b.vel.z < 0 && checkBrickHit(b,p1Bricks,0,BRICK_Z1,-1)) { if (b.state!=='idle') b.state='returning'; continue; }
       if (b.vel.z > 0 && b.pos.z > AD-BALL_R) {
-        triggerBounceRing(b.pos.x,b.pos.y,AD,'z');
-        b.state='idle'; b.clearTrail();
-        if (b.shooterPaddle) { b.shooterPaddle.visible=true; b.shooterPaddle=null; }
-        scorePoint(0, 1); continue;
+        b.pos.z=AD-BALL_R; triggerBounceRing(b.pos.x,b.pos.y,AD,'z');
+        b.state='returning'; soundBrick(); continue;
       }
       if (b.vel.z < 0 && b.pos.z < BALL_R) {
-        triggerBounceRing(b.pos.x,b.pos.y,0,'z');
-        b.state='idle'; b.clearTrail();
-        if (b.shooterPaddle) { b.shooterPaddle.visible=true; b.shooterPaddle=null; }
-        scorePoint(1, 1); continue;
+        b.pos.z=BALL_R; triggerBounceRing(b.pos.x,b.pos.y,0,'z');
+        b.state='returning'; soundBrick(); continue;
       }
     }
 
