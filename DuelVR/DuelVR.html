@@ -37,12 +37,14 @@
       opacity: 0; transition: opacity 0.4s;
     }
     #score.visible { opacity: 1; }
-    #score-p1 { color: #44aaff; }
-    #score-p2 { color: #ff4466; }
+    #score-p1, #score-p2 { color: #fff; }
+    .score-pip { display: inline-block; width: 11px; height: 11px; vertical-align: top; margin-top: 7px; margin-right: 6px; }
+    .score-pip.p1 { background: #44aaff; }
+    .score-pip.p2 { background: #ff4466; }
   </style>
 </head>
 <body>
-<div id="score"><span id="score-p1">0</span> <span style="color:#fff"> — </span> <span id="score-p2">0</span></div>
+<div id="score"><span id="score-p1"><span class="score-pip p1"></span>0</span>&nbsp;&nbsp;&nbsp;<span id="score-p2"><span class="score-pip p2"></span>0</span></div>
 <div id="attract">
   <img id="attract-logo"  src="DuelVR.png" alt="TennisVR">
   <img id="attract-start" src="Start.png"    alt="START">
@@ -376,6 +378,8 @@ p2Bricks[2].state = 'white'; p2Bricks[2].fillMat.color.setHex(0xffffff); p2Brick
 
 let brickCounts = [BRICK_COUNT, BRICK_COUNT];
 const brickGroupX = [0, 0];
+const dyingBricks = [];
+let _pendingWin = null;
 
 function resetBricks() {
   brickCounts[0] = brickCounts[1] = BRICK_COUNT;
@@ -393,6 +397,8 @@ function resetBricks() {
   }
   updateBrickGroupX(0, 0);
   updateBrickGroupX(1, 0);
+  dyingBricks.length = 0;
+  _pendingWin = null;
 }
 
 function updateBrickGroupX(side, targetX) {
@@ -438,10 +444,12 @@ function updateVRBricks() {
   const W = vrScoreCanvas.width, H = vrScoreCanvas.height;
   const ctx = vrScoreCtx;
   ctx.clearRect(0, 0, W, H);
-  ctx.font = 'bold 56px monospace'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = '#44aaff'; ctx.textAlign = 'right';  ctx.fillText(p1Score, W * 0.44, H / 2);
-  ctx.fillStyle = '#888';    ctx.textAlign = 'center'; ctx.fillText('—', W * 0.5, H / 2);
-  ctx.fillStyle = '#ff4466'; ctx.textAlign = 'left';   ctx.fillText(p2Score, W * 0.56, H / 2);
+  ctx.font = 'bold 56px monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
+  const pipSz = 14, pipTop = H / 2 - 30;
+  ctx.fillStyle = '#44aaff'; ctx.fillRect(W * 0.16, pipTop, pipSz, pipSz);
+  ctx.fillStyle = '#fff';    ctx.fillText(p1Score, W * 0.16 + pipSz + 7, H / 2);
+  ctx.fillStyle = '#ff4466'; ctx.fillRect(W * 0.56, pipTop, pipSz, pipSz);
+  ctx.fillStyle = '#fff';    ctx.fillText(p2Score, W * 0.56 + pipSz + 7, H / 2);
   vrScoreTex.needsUpdate = true;
 }
 
@@ -543,8 +551,8 @@ function resetPaddles() {
 }
 
 function updateScoreDisplay() {
-  scoreP1El.textContent = p1Score;
-  scoreP2El.textContent = p2Score;
+  scoreP1El.innerHTML = '<span class="score-pip p1"></span>' + p1Score;
+  scoreP2El.innerHTML = '<span class="score-pip p2"></span>' + p2Score;
   updateVRBricks();
 }
 
@@ -820,9 +828,12 @@ function updateXRPaddles(frame) {
   const viewerPose = frame.getViewerPose(rs);
   if (!viewerPose) return;
   const headZ = viewerPose.transform.position.z;
+  let handledRight = false, handledLeft = false;
   for (const src of xrSession.inputSources) {
     const isRight = src.handedness === 'right', isLeft = src.handedness === 'left';
     if (!isRight && !isLeft) continue;
+    // Hand tracking takes priority: skip controller source if hand already updated this side
+    if (!src.hand && ((isRight && handledRight) || (isLeft && handledLeft))) continue;
     let wx, wy, wz;
     if (src.hand) {
       const wrist = src.hand.get('wrist');
@@ -839,6 +850,7 @@ function updateXRPaddles(frame) {
     if (src.hand) {
       const depth = wz - headZ;
       t = THREE.MathUtils.clamp((depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK), 0, 1);
+      if (isRight) handledRight = true; else handledLeft = true;
     } else {
       t = src.gamepad?.buttons[0]?.value ?? 0;  // index trigger 0→1
     }
@@ -914,6 +926,26 @@ function deflectBall(b, paddleX, paddleY, newZSign, flashIdx) {
   soundPaddle();
 }
 
+const BRICK_FLASH_INTERVAL = 0.1;
+function updateDyingBricks(dt) {
+  for (let i = dyingBricks.length - 1; i >= 0; i--) {
+    const e = dyingBricks[i];
+    e.timer -= dt;
+    if (e.timer <= 0) {
+      e.phase++;
+      e.timer = BRICK_FLASH_INTERVAL;
+      const vis = (e.phase % 2 === 0);
+      e.brick.mesh.visible = vis;
+      e.brick.edges.visible = vis;
+      if (e.phase >= 5) {
+        e.brick.mesh.visible = false;
+        e.brick.edges.visible = false;
+        dyingBricks.splice(i, 1);
+      }
+    }
+  }
+}
+
 function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
   const front = brickZ + (BRICK_D / 2 + BALL_R) * (-velZSign);
   const back  = brickZ + (BRICK_D / 2 + BALL_R) * ( velZSign);
@@ -930,19 +962,30 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
       b.pos.z = front;
       b.vel.z = -b.vel.z;
       wallFlash[sideIdx] = 1.0;
-      soundBrick();
       triggerBounceRing(brick.x, brick.y, brickZ, 'z');
 
-      brick.alive = false; brick.mesh.visible = false; brick.edges.visible = false;
-      brickCounts[sideIdx]--;
-      if (i === 2) {
-        // Centre brick: 100 pts instant win for the attacker
+      if (i === 2 && brick.state === 'white') {
+        // Centre brick first hit: tint to attacker colour, stay alive
+        const isP1 = (b.shooter === p1 || b.shooter === p1b);
+        brick.fillMat.color.setHex(isP1 ? 0x2255bb : 0xbb2233);
+        brick.edgeMat.color.setHex(isP1 ? 0x44aaff : 0xff4466);
+        brick.state = 'damaged';
+        soundBrick();
         updateVRBricks();
-        scorePoint(1 - sideIdx, 100);
       } else {
-        updateVRBricks();
-        if (sideIdx === 0) applyP1BrickEffect(i);
-        else               applyP2BrickEffect(i);
+        brick.alive = false;
+        brickCounts[sideIdx]--;
+        dyingBricks.push({ brick, phase: 0, timer: BRICK_FLASH_INTERVAL });
+        if (i === 2) {
+          soundCenterBrick();
+          updateVRBricks();
+          _pendingWin = { scorer: 1 - sideIdx, timer: 3.0 };
+        } else {
+          soundBrick();
+          updateVRBricks();
+          if (sideIdx === 0) applyP1BrickEffect(i);
+          else               applyP2BrickEffect(i);
+        }
       }
       return true;
     }
@@ -1001,12 +1044,16 @@ function updateBall(dt) {
       if (b.vel.z > 0 && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { if (b.state!=='idle') b.state='returning'; continue; }
       if (b.vel.z < 0 && checkBrickHit(b,p1Bricks,0,BRICK_Z1,-1)) { if (b.state!=='idle') b.state='returning'; continue; }
       if (b.vel.z > 0 && b.pos.z > AD-BALL_R) {
-        b.pos.z=AD-BALL_R; triggerBounceRing(b.pos.x,b.pos.y,AD,'z');
-        b.state='returning'; soundBrick(); continue;
+        triggerBounceRing(b.pos.x,b.pos.y,AD,'z');
+        b.state='idle'; b.clearTrail();
+        if (b.shooterPaddle) { b.shooterPaddle.visible=true; b.shooterPaddle=null; }
+        scorePoint(0, 1); continue;
       }
       if (b.vel.z < 0 && b.pos.z < BALL_R) {
-        b.pos.z=BALL_R; triggerBounceRing(b.pos.x,b.pos.y,0,'z');
-        b.state='returning'; soundBrick(); continue;
+        triggerBounceRing(b.pos.x,b.pos.y,0,'z');
+        b.state='idle'; b.clearTrail();
+        if (b.shooterPaddle) { b.shooterPaddle.visible=true; b.shooterPaddle=null; }
+        scorePoint(1, 1); continue;
       }
     }
 
@@ -1034,6 +1081,13 @@ function blip(freq, dur, vol = 0.35) {
 const soundPaddle = () => blip(480, 0.08, 0.4);
 const soundWall   = () => blip(240, 0.06, 0.2);
 const soundBrick  = () => { blip(320, 0.07, 0.45); setTimeout(() => blip(180, 0.12, 0.35), 70); };
+const soundCenterBrick = () => {
+  blip(220, 0.3, 0.5);
+  setTimeout(() => blip(330, 0.35, 0.55), 150);
+  setTimeout(() => blip(440, 0.4,  0.6),  320);
+  setTimeout(() => blip(660, 0.5,  0.65), 550);
+  setTimeout(() => blip(880, 0.6,  0.5),  850);
+};
 function soundWin() {
   blip(440, 0.12, 0.5); setTimeout(() => blip(560, 0.14, 0.55), 140);
   setTimeout(() => blip(880, 0.22, 0.6), 300);
@@ -1100,6 +1154,15 @@ renderer.setAnimationLoop((time, frame) => {
   updateCpu(dt);   // also calls updateBrickGroupX(1, p2HeadX)
   updateCpuShooting(dt);
   updateBall(dt);
+  updateDyingBricks(dt);
+  if (_pendingWin && gameState === 'playing') {
+    _pendingWin.timer -= dt;
+    if (_pendingWin.timer <= 0) {
+      const scorer = _pendingWin.scorer;
+      _pendingWin = null;
+      scorePoint(scorer, 100);
+    }
+  }
 
   // P1 brick group tracks human head
   const headX = renderer.xr.isPresenting ? renderer.xr.getCamera().position.x : camera.position.x;
