@@ -280,6 +280,7 @@ const _glowTex = (() => {
 function makeBallObject(glowColor = 0xffffff) {
   const ballMat  = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
   const mesh     = new THREE.Mesh(new THREE.CircleGeometry(BALL_R, 24), ballMat);
+  mesh.rotation.x = -Math.PI / 2;
   const glowMat  = new THREE.SpriteMaterial({ map: _glowTex, color: glowColor, transparent: true, depthWrite: false });
   const sprite   = new THREE.Sprite(glowMat);
   sprite.scale.set(0.30, 0.30, 1); mesh.add(sprite);
@@ -290,6 +291,7 @@ function makeBallObject(glowColor = 0xffffff) {
   const tMeshes = Array.from({ length: TRAIL }, (_, i) => {
     tMats[i].side = THREE.DoubleSide;
     const m = new THREE.Mesh(new THREE.CircleGeometry(BALL_R * (1 - i / TRAIL) * 0.7, 10), tMats[i]);
+    m.rotation.x = -Math.PI / 2;
     arenaRoot.add(m); return m;
   });
   const tBuf = Array.from({ length: TRAIL }, () => new THREE.Vector3(-99, 0, 0));
