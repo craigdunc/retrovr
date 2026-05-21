@@ -451,10 +451,9 @@ const dyingBricks = [];
 
 // ── Avatar motion pose ────────────────────────────────────────────────────────
 // rotation.z applied to each brick when fully in "running" state (0=still,1=running)
-const BRICK_MOTION_RZ  = [ 0.45,  0.20,  0.06, -0.20, -0.45 ];
-const BRICK_MOTION_DX  = [-0.030,-0.014,  0,    0.014, 0.030 ];  // arms spread outward
-const BRICK_MOTION_DY  = [-0.020,-0.008,  0,   -0.008,-0.020 ];  // outer bricks drop
-const BODY_MOTION_RZ   = [ 0.10,  0.15 ];  // head, torso
+const AVATAR_LEAN      = 0.28;                                    // max lean angle (radians)
+const BRICK_MOTION_DX  = [-0.030,-0.014,  0,    0.014, 0.030 ];  // arms spread outward at speed
+const BRICK_MOTION_DY  = [-0.020,-0.008,  0,   -0.008,-0.020 ];  // outer bricks drop at speed
 const avatarPose       = [0, 0];             // per-side lerp value
 const _prevHeadPos     = new THREE.Vector3();
 let   _prevP2GroupX    = 0;
@@ -1078,41 +1077,41 @@ function updateDyingBricks(dt) {
 }
 
 function updateAvatarPose(dt) {
-  // P1: driven by XR head velocity (silent on desktop — no VR, no movement)
-  let p1Moving = false;
+  // P1: signed X velocity from XR head (desktop stays 0)
+  let p1Target = 0;
   if (renderer.xr.isPresenting) {
     const hPos = renderer.xr.getCamera().position;
-    const vel  = hPos.distanceTo(_prevHeadPos) / Math.max(dt, 0.001);
+    const xVel = (hPos.x - _prevHeadPos.x) / Math.max(dt, 0.001);
     _prevHeadPos.copy(hPos);
-    p1Moving = vel > 0.25;
+    p1Target = Math.max(-1, Math.min(1, xVel / 0.4));
   }
 
-  // P2: driven by how fast the CPU brick group is sliding
-  const p2GroupVel = Math.abs(brickGroupX[1] - _prevP2GroupX) / Math.max(dt, 0.001);
-  _prevP2GroupX    = brickGroupX[1];
-  const p2Moving   = p2GroupVel > 0.04;
+  // P2: signed X velocity from CPU brick group
+  const p2XVel  = (brickGroupX[1] - _prevP2GroupX) / Math.max(dt, 0.001);
+  _prevP2GroupX = brickGroupX[1];
+  const p2Target = Math.max(-1, Math.min(1, p2XVel / 0.15));
 
   const speed = 4.0;
-  avatarPose[0] += ((p1Moving ? 1 : 0) - avatarPose[0]) * Math.min(speed * dt, 1);
-  avatarPose[1] += ((p2Moving ? 1 : 0) - avatarPose[1]) * Math.min(speed * dt, 1);
+  avatarPose[0] += (p1Target - avatarPose[0]) * Math.min(speed * dt, 1);
+  avatarPose[1] += (p2Target - avatarPose[1]) * Math.min(speed * dt, 1);
 
   for (let side = 0; side < 2; side++) {
     const bricks = side === 0 ? p1Bricks : p2Bricks;
     const body   = side === 0 ? p1Body   : p2Body;
     const pose   = avatarPose[side];
+    const mag    = Math.abs(pose);
+    const rz     = -AVATAR_LEAN * pose;  // negative: rightward motion → clockwise lean
     for (let i = 0; i < BRICK_COUNT; i++) {
-      const rz = BRICK_MOTION_RZ[i] * pose;
       bricks[i].mesh.rotation.z  = rz;
       bricks[i].edges.rotation.z = rz;
-      const wx = brickGroupX[side] + bricks[i].localX + BRICK_MOTION_DX[i] * pose;
+      const wx = brickGroupX[side] + bricks[i].localX + BRICK_MOTION_DX[i] * mag;
       bricks[i].mesh.position.x  = wx;
       bricks[i].edges.position.x = wx;
-      const wy = BRICK_Y + BRICK_CONFIGS[i].dy + BRICK_MOTION_DY[i] * pose;
+      const wy = BRICK_Y + BRICK_CONFIGS[i].dy + BRICK_MOTION_DY[i] * mag;
       bricks[i].mesh.position.y  = wy;
       bricks[i].edges.position.y = wy;
     }
     for (let j = 0; j < body.length; j++) {
-      const rz = BODY_MOTION_RZ[j] * pose;
       body[j].mesh.rotation.z  = rz;
       body[j].edges.rotation.z = rz;
     }
