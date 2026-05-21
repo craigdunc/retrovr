@@ -141,6 +141,7 @@ const PADDLE_INSET = 1.5;  // 30cm in front of avatar (BRICK_Z1=1.2)
 const TILT_Z_BACK  = 0.20;              // hand depth ahead of head (m) = full vertical paddle
 const TILT_Z_FRONT = 0.24;              // hand depth ahead of head (m) = full horizontal coin + laser
 const P1_SENS      = 1.8;
+const P1_VR_SENS   = 0.17;  // VR game frisbee: full arm reach → avatar arm width
 const SHOOT_SPEED  = 2.4;               // m/s — matches pong3d serve speed
 const RETURN_SPEED = SHOOT_SPEED * 2;   // m/s — Thor's hammer return
 const ARENA_CY     = AY + AH * 0.5;
@@ -377,6 +378,17 @@ const ghostRing1  = makeGhostRing(0x88bbff);
 const ghostRing1b = makeGhostRing(0x66ddff);
 const ghostRing2  = makeGhostRing(0xff88aa);
 const ghostRing2b = makeGhostRing(0xffbb66);
+
+// Real-scale hand indicators — track actual VR hand position 1:1, no game mechanics
+function makeRealHandRing(color) {
+  const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, depthWrite: false });
+  const torus = new THREE.Mesh(new THREE.TorusGeometry(PADDLE_R, 0.006, 8, 40), mat);
+  torus.position.y = PADDLE_R;
+  const g = new THREE.Group(); g.add(torus); g.visible = false;
+  arenaRoot.add(g); return g;
+}
+const realHand1  = makeRealHandRing(0x88bbff);
+const realHand1b = makeRealHandRing(0x66ddff);
 arenaRoot.add(paddle1, paddle1b, paddle2, paddle2b);
 const paddleFlash = [0, 0, 0, 0];
 
@@ -950,8 +962,11 @@ function updateXRPaddles(frame) {
       t = Math.max(tDepth, tTrigger);
     }
     const target = isRight ? p1 : p1b;
-    target.targetX          = wx * P1_SENS;
-    target.targetY          = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
+    target.targetX          = wx * P1_VR_SENS;
+    target.targetY          = ARENA_CY + (wy - ARENA_CY) * P1_VR_SENS;
+    const realH = isRight ? realHand1 : realHand1b;
+    realH.visible = true;
+    realH.position.set(wx, wy - PADDLE_R, PADDLE_INSET);
     target.targetTilt       = t * Math.PI / 2;
     target.targetScale      = 1;
     target.targetBrightness = t;
@@ -1394,6 +1409,7 @@ renderer.setAnimationLoop((time, frame) => {
   paddle2.position.set(p2.x,   p2.y   - PADDLE_R, AD - PADDLE_INSET);  paddle2.rotation.set(-p2.tilt,  Math.PI, 0);  paddle2.scale.setScalar(p2.scale);
   paddle2b.position.set(p2b.x, p2b.y  - PADDLE_R, AD - PADDLE_INSET);  paddle2b.rotation.set(-p2b.tilt, Math.PI, 0);  paddle2b.scale.setScalar(p2b.scale);
 
+  if (!renderer.xr.isPresenting) { realHand1.visible = false; realHand1b.visible = false; }
   ghostRing1.visible  = balls[0].state === 'flying'; ghostRing1.position.set(p1.x,   p1.y   - PADDLE_R, PADDLE_INSET);
   ghostRing1b.visible = balls[1].state === 'flying'; ghostRing1b.position.set(p1b.x, p1b.y  - PADDLE_R, PADDLE_INSET);
   ghostRing2.visible  = balls[2].state === 'flying'; ghostRing2.position.set(p2.x,   p2.y   - PADDLE_R, AD - PADDLE_INSET);
