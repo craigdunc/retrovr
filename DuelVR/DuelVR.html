@@ -135,7 +135,7 @@ const AH = 0.762;
 const AD = 2.74;
 const AY = 0.76;
 const BALL_R       = 0.024;
-const PADDLE_R     = 0.080;
+const PADDLE_R     = 0.100;
 const COIN_R       = 0.022;   // tiny coin-puck radius when hand is past front plane
 const PADDLE_INSET = 0.15;
 const TILT_Z_BACK  = 0.20;              // hand depth ahead of head (m) = full vertical paddle
@@ -774,7 +774,7 @@ function _cpuDoShoot(paddle, ball, group, state, dt) {
   const charge = THREE.MathUtils.clamp(1 - state.timer / CPU_CHARGE_WIN, 0, 1);
   paddle.targetTilt       = charge * (Math.PI / 2);
   paddle.targetBrightness = charge;
-  paddle.targetScale      = THREE.MathUtils.lerp(1, COIN_R / PADDLE_R, charge);
+  paddle.targetScale      = 1;
   if (state.timer <= 0) {
     const alive = p1Bricks.filter(br => br.alive);
     if (alive.length > 0) {
@@ -872,7 +872,7 @@ function updateXRPaddles(frame) {
     target.targetX          = wx * P1_SENS;
     target.targetY          = ARENA_CY + (wy - ARENA_CY) * P1_SENS;
     target.targetTilt       = t * Math.PI / 2;
-    target.targetScale      = THREE.MathUtils.lerp(1.0, COIN_R / PADDLE_R, t);
+    target.targetScale      = 1;
     target.targetBrightness = t;
     target.laserOn          = src.hand ? (t >= 1) : (t >= 0.95);
 
@@ -1132,8 +1132,6 @@ function updateBall(dt) {
       }
     }
 
-    const s = b.state === 'returning' ? 0.5 : 1.0;
-    b.mesh.scale.setScalar(s);
     b.setFade(b.state === 'returning' ? 0.35 : 1.0);
     b.mesh.visible = true;
     b.pushTrail(b.pos);
