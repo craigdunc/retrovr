@@ -294,7 +294,7 @@ function makeBallObject() {
   let tHead = 0;
   return {
     pos: new THREE.Vector3(), vel: new THREE.Vector3(),
-    state: 'idle', shooter: null, shooterPaddle: null,
+    state: 'idle', shooter: null, shooterPaddle: null, shooterZ: PADDLE_INSET,
     mesh,
     pushTrail(pos) {
       tBuf[tHead].copy(pos); tHead = (tHead + 1) % TRAIL;
@@ -324,6 +324,8 @@ const { group: paddle1b, faceMat: p1bFaceMat } = makePaddle(0x22aacc, 0x66ddff);
 const _whiteColor  = new THREE.Color(0xffffff);
 const _p1BaseColor = new THREE.Color(0x3377dd);
 const _p1bBaseColor = new THREE.Color(0x22aacc);
+const _p2BaseColor  = new THREE.Color(0xdd3355);
+const _p2bBaseColor = new THREE.Color(0xdd7722);
 const { group: paddle2,  faceMat: p2FaceMat  } = makePaddle(0xdd3355, 0xff88aa);
 const { group: paddle2b, faceMat: p2bFaceMat } = makePaddle(0xdd7722, 0xffbb66);
 arenaRoot.add(paddle1, paddle1b, paddle2, paddle2b);
@@ -508,8 +510,8 @@ const scoreP2El = document.getElementById('score-p2');
 const balls = Array.from({ length: 4 }, makeBallObject);
 const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
 const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
-const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
-const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false };
+const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
+const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
 let serving = true, servePhase = 'drop', serveTimer = 0;
 
 const attractEl   = document.getElementById('attract');
@@ -534,8 +536,10 @@ function setAllPaddlesVisible(v) {
 function resetPaddles() {
   p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.brightness  = 0; p1.targetBrightness  = 0;
   p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.brightness = 0; p1b.targetBrightness = 0;
-  p2.deleted  = false; p2.speedMult  = 1.0;
-  p2b.deleted = false; p2b.speedMult = 1.0;
+  p2.deleted  = false; p2.speedMult  = 1.0;  p2.tilt  = 0; p2.targetTilt  = 0; p2.scale  = 1; p2.targetScale  = 1; p2.brightness  = 0; p2.targetBrightness  = 0;
+  p2b.deleted = false; p2b.speedMult = 1.0;  p2b.tilt = 0; p2b.targetTilt = 0; p2b.scale = 1; p2b.targetScale = 1; p2b.brightness = 0; p2b.targetBrightness = 0;
+  _cpuShootState2.timer  = 5.0;
+  _cpuShootState2b.timer = 5.5;
 }
 
 function updateScoreDisplay() {
@@ -733,6 +737,43 @@ function updateCpu(dt) {
   updateBrickGroupX(1, (p2.x + p2b.x) / 2);
 }
 
+// ── CPU shooting ─────────────────────────────────────────────────────────────
+const CPU_SHOOT_MIN  = 3.0;
+const CPU_SHOOT_MAX  = 5.0;
+const CPU_CHARGE_WIN = 0.5;  // visual charge window before fire (s)
+const _cpuShootState2  = { timer: 5.0 };
+const _cpuShootState2b = { timer: 5.5 };
+const _cpuShootDir = new THREE.Vector3();
+
+function _cpuDoShoot(paddle, ball, group, state, dt) {
+  if (paddle.deleted) return;
+  if (ball.state !== 'idle') {
+    paddle.targetTilt = 0; paddle.targetBrightness = 0; paddle.targetScale = 1;
+    return;
+  }
+  state.timer -= dt;
+  const charge = THREE.MathUtils.clamp(1 - state.timer / CPU_CHARGE_WIN, 0, 1);
+  paddle.targetTilt       = charge * (Math.PI / 2);
+  paddle.targetBrightness = charge;
+  paddle.targetScale      = THREE.MathUtils.lerp(1, COIN_R / PADDLE_R, charge);
+  if (state.timer <= 0) {
+    const alive = p1Bricks.filter(br => br.alive);
+    if (alive.length > 0) {
+      const target = alive[Math.floor(Math.random() * alive.length)];
+      _cpuShootDir.set(target.x - paddle.x, target.y - paddle.y, BRICK_Z1 - (AD - PADDLE_INSET)).normalize();
+      shootBall(ball, paddle, group, _cpuShootDir, AD - PADDLE_INSET);
+    }
+    state.timer = CPU_SHOOT_MIN + Math.random() * (CPU_SHOOT_MAX - CPU_SHOOT_MIN);
+    paddle.targetTilt = 0; paddle.targetBrightness = 0; paddle.targetScale = 1;
+  }
+}
+
+function updateCpuShooting(dt) {
+  if (gameState !== 'playing') return;
+  _cpuDoShoot(p2,  balls[2], paddle2,  _cpuShootState2,  dt);
+  _cpuDoShoot(p2b, balls[3], paddle2b, _cpuShootState2b, dt);
+}
+
 // ── WebXR ─────────────────────────────────────────────────────────────────────
 let xrSession = null;
 
@@ -828,14 +869,15 @@ function updateXRPaddles(frame) {
 }
 
 // ── Shoot / return ────────────────────────────────────────────────────────────
-function shootBall(b, shooter, paddleGroup, dir) {
+function shootBall(b, shooter, paddleGroup, dir, shooterZ) {
   if (b.state !== 'idle' || gameState !== 'playing') return;
-  b.pos.set(shooter.x, shooter.y, PADDLE_INSET);
+  b.pos.set(shooter.x, shooter.y, shooterZ);
   b.vel.copy(dir).multiplyScalar(SHOOT_SPEED);
   b.clearTrail();
   b.state         = 'flying';
   b.shooter       = shooter;
   b.shooterPaddle = paddleGroup;
+  b.shooterZ      = shooterZ;
   paddleGroup.visible = false;
   soundPaddle();
 }
@@ -912,7 +954,7 @@ function updateBall(dt) {
     if (b.state === 'idle') { b.mesh.visible = false; b.clearTrail(); continue; }
 
     if (b.state === 'returning' && b.shooter) {
-      const dx = b.shooter.x - b.pos.x, dy = b.shooter.y - b.pos.y, dz = PADDLE_INSET - b.pos.z;
+      const dx = b.shooter.x - b.pos.x, dy = b.shooter.y - b.pos.y, dz = b.shooterZ - b.pos.z;
       const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
       if (d < BALL_R * 3) {
         b.state = 'idle'; b.mesh.visible = false;
@@ -930,6 +972,9 @@ function updateBall(dt) {
     else if (b.pos.y > AY+AH-BALL_R) { b.pos.y=AY+AH-BALL_R; b.vel.y=-Math.abs(b.vel.y); triggerBounceRing(b.pos.x,AY+AH,b.pos.z,'y'); }
 
     if (b.state === 'flying') {
+      // Bricks first — they're flush with the end walls, same z threshold as wall bounce
+      if (b.vel.z > 0 && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { if (b.state!=='idle') b.state='returning'; continue; }
+      if (b.vel.z < 0 && checkBrickHit(b,p1Bricks,0,BRICK_Z1,-1)) { if (b.state!=='idle') b.state='returning'; continue; }
       if (b.vel.z > 0 && b.pos.z > AD-BALL_R) {
         b.pos.z=AD-BALL_R; triggerBounceRing(b.pos.x,b.pos.y,AD,'z');
         b.state='returning'; soundBrick(); continue;
@@ -938,8 +983,6 @@ function updateBall(dt) {
         b.pos.z=BALL_R; triggerBounceRing(b.pos.x,b.pos.y,0,'z');
         b.state='returning'; soundBrick(); continue;
       }
-      if (b.vel.z > 0 && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { if (b.state!=='idle') b.state='returning'; continue; }
-      if (b.vel.z < 0 && checkBrickHit(b,p1Bricks,0,BRICK_Z1,-1)) { if (b.state!=='idle') b.state='returning'; continue; }
     }
 
     b.mesh.visible = true;
@@ -987,8 +1030,8 @@ renderer.setAnimationLoop((time, frame) => {
   if (frame) {
     updateXRPaddles(frame);
     if (gameState === 'playing') {
-      if (p1.laserOn  && !p1.wasLaserOn)  shootBall(balls[0], p1,  paddle1,  p1LaserDir);
-      if (p1b.laserOn && !p1b.wasLaserOn) shootBall(balls[1], p1b, paddle1b, p1bLaserDir);
+      if (p1.laserOn  && !p1.wasLaserOn)  shootBall(balls[0], p1,  paddle1,  p1LaserDir,  PADDLE_INSET);
+      if (p1b.laserOn && !p1b.wasLaserOn) shootBall(balls[1], p1b, paddle1b, p1bLaserDir, PADDLE_INSET);
     }
     p1.wasLaserOn  = p1.laserOn;
     p1b.wasLaserOn = p1b.laserOn;
@@ -1018,7 +1061,19 @@ renderer.setAnimationLoop((time, frame) => {
   p1FaceMat.opacity  = 0.35 + p1.brightness  * 0.55;
   p1bFaceMat.opacity = 0.35 + p1b.brightness * 0.55;
 
+  p2.tilt   += (p2.targetTilt   - p2.tilt)   * ts;
+  p2b.tilt  += (p2b.targetTilt  - p2b.tilt)  * ts;
+  p2.scale  += (p2.targetScale  - p2.scale)  * ts;
+  p2b.scale += (p2b.targetScale - p2b.scale) * ts;
+  p2.brightness  += (p2.targetBrightness  - p2.brightness)  * ts;
+  p2b.brightness += (p2b.targetBrightness - p2b.brightness) * ts;
+  p2FaceMat.color.lerpColors(_p2BaseColor,  _whiteColor, p2.brightness);
+  p2bFaceMat.color.lerpColors(_p2bBaseColor, _whiteColor, p2b.brightness);
+  p2FaceMat.opacity  = 0.35 + p2.brightness  * 0.55;
+  p2bFaceMat.opacity = 0.35 + p2b.brightness * 0.55;
+
   updateCpu(dt);   // also calls updateBrickGroupX(1, p2HeadX)
+  updateCpuShooting(dt);
   updateBall(dt);
 
   // P1 brick group tracks human head
@@ -1047,8 +1102,8 @@ renderer.setAnimationLoop((time, frame) => {
   // Group origin is at bottom edge — rotation and scale both pivot from there
   paddle1.position.set(p1.x,   p1.y   - PADDLE_R, PADDLE_INSET);  paddle1.rotation.set(p1.tilt,  0, 0);  paddle1.scale.setScalar(p1.scale);
   paddle1b.position.set(p1b.x, p1b.y  - PADDLE_R, PADDLE_INSET);  paddle1b.rotation.set(p1b.tilt, 0, 0);  paddle1b.scale.setScalar(p1b.scale);
-  paddle2.position.set(p2.x,   p2.y,   AD - PADDLE_INSET);  paddle2.rotation.set(0, Math.PI, 0);
-  paddle2b.position.set(p2b.x, p2b.y,  AD - PADDLE_INSET);  paddle2b.rotation.set(0, Math.PI, 0);
+  paddle2.position.set(p2.x,   p2.y   - PADDLE_R, AD - PADDLE_INSET);  paddle2.rotation.set(-p2.tilt,  Math.PI, 0);  paddle2.scale.setScalar(p2.scale);
+  paddle2b.position.set(p2b.x, p2b.y  - PADDLE_R, AD - PADDLE_INSET);  paddle2b.rotation.set(-p2b.tilt, Math.PI, 0);  paddle2b.scale.setScalar(p2b.scale);
   // Laser visibility is managed inside updateXRPaddles; hide both outside VR
   if (!renderer.xr.isPresenting) { laser1.line.visible = false; laser1b.line.visible = false; }
 
