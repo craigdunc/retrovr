@@ -134,8 +134,8 @@ const AW = 1.525;
 const AH = 0.762;
 const AD = 2.74;
 const AY = 0.76;
-const BALL_R       = 0.100;
-const PADDLE_R     = 0.100;
+const BALL_R       = 0.060;
+const PADDLE_R     = 0.060;
 const COIN_R       = 0.022;   // tiny coin-puck radius when hand is past front plane
 const PADDLE_INSET = 0.15;
 const TILT_Z_BACK  = 0.20;              // hand depth ahead of head (m) = full vertical paddle
@@ -149,6 +149,7 @@ const ARENA_CY     = AY + AH * 0.5;
 const BRICK_COUNT = 5;
 const BRICK_W = (AW / 2) / BRICK_COUNT;  // 5 bricks = half-arena width
 const BRICK_H = 0.12;
+const BRICK_SCALE = 0.60;
 const BRICK_D = 0.08;           // thick enough to prevent tunnelling at max speed
 const BRICK_Y = AY + AH * 0.5; // vertically centred in arena
 const BRICK_Z1 = -BRICK_D / 2;      // P1's bricks flush with z=0 wall (face facing P2 at z=0)
@@ -387,7 +388,7 @@ function makeBricks(brickZ, fillColor, edgeColor) {
   const groupW = BRICK_W * BRICK_COUNT;
   return Array.from({ length: BRICK_COUNT }, (_, i) => {
     const localX  = -groupW / 2 + BRICK_W / 2 + BRICK_W * i;
-    const geo     = new THREE.BoxGeometry(BRICK_W, BRICK_H, BRICK_D);
+    const geo     = new THREE.BoxGeometry(BRICK_W * BRICK_SCALE, BRICK_H * BRICK_SCALE, BRICK_D);
     const fillMat = new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.18 });
     const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: 1 });
     const mesh  = new THREE.Mesh(geo, fillMat);
@@ -1034,8 +1035,8 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
   for (let i = 0; i < bricks.length; i++) {
     const brick = bricks[i];
     if (!brick.alive) continue;
-    if (Math.abs(b.pos.x - brick.x) < BRICK_W / 2 + BALL_R &&
-        Math.abs(b.pos.y - brick.y) < BRICK_H / 2 + BALL_R) {
+    if (Math.abs(b.pos.x - brick.x) < BRICK_W * BRICK_SCALE / 2 + BALL_R &&
+        Math.abs(b.pos.y - brick.y) < BRICK_H * BRICK_SCALE / 2 + BALL_R) {
       b.pos.z = front;
       b.vel.z = -b.vel.z;
       wallFlash[sideIdx] = 1.0;
@@ -1234,8 +1235,6 @@ renderer.setAnimationLoop((time, frame) => {
   p1b.scale += (p1b.targetScale - p1b.scale) * ts;
   p1.brightness  += (p1.targetBrightness  - p1.brightness)  * ts;
   p1b.brightness += (p1b.targetBrightness - p1b.brightness) * ts;
-  p1FaceMat.color.lerpColors(_p1BaseColor,  _whiteColor, p1.brightness);
-  p1bFaceMat.color.lerpColors(_p1bBaseColor, _whiteColor, p1b.brightness);
   p1FaceMat.opacity  = 0.70 + p1.brightness  * 0.30;
   p1bFaceMat.opacity = 0.70 + p1b.brightness * 0.30;
 
@@ -1245,8 +1244,6 @@ renderer.setAnimationLoop((time, frame) => {
   p2b.scale += (p2b.targetScale - p2b.scale) * ts;
   p2.brightness  += (p2.targetBrightness  - p2.brightness)  * ts;
   p2b.brightness += (p2b.targetBrightness - p2b.brightness) * ts;
-  p2FaceMat.color.lerpColors(_p2BaseColor,  _whiteColor, p2.brightness);
-  p2bFaceMat.color.lerpColors(_p2bBaseColor, _whiteColor, p2b.brightness);
   p2FaceMat.opacity  = 0.70 + p2.brightness  * 0.30;
   p2bFaceMat.opacity = 0.70 + p2b.brightness * 0.30;
 
