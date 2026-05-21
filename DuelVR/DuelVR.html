@@ -385,9 +385,10 @@ const p1bLaserDir    = new THREE.Vector3();
 
 // ── Bricks ────────────────────────────────────────────────────────────────────
 function makeBricks(brickZ, fillColor, edgeColor) {
-  const groupW = BRICK_W * BRICK_COUNT;
+  const bW = BRICK_W * BRICK_SCALE;
+  const groupW = bW * BRICK_COUNT;
   return Array.from({ length: BRICK_COUNT }, (_, i) => {
-    const localX  = -groupW / 2 + BRICK_W / 2 + BRICK_W * i;
+    const localX  = -groupW / 2 + bW / 2 + bW * i;
     const geo     = new THREE.BoxGeometry(BRICK_W * BRICK_SCALE, BRICK_H * BRICK_SCALE, BRICK_D);
     const fillMat = new THREE.MeshBasicMaterial({ color: fillColor, transparent: true, opacity: 0.18 });
     const edgeMat = new THREE.LineBasicMaterial({ color: edgeColor, transparent: true, opacity: 1 });
