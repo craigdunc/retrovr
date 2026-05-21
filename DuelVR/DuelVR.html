@@ -547,8 +547,8 @@ function setAllPaddlesVisible(v) {
 }
 
 function resetPaddles() {
-  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.brightness  = 0; p1.targetBrightness  = 0;
-  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.brightness = 0; p1b.targetBrightness = 0;
+  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.wasLaserOn  = true; p1.brightness  = 0; p1.targetBrightness  = 0;
+  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.wasLaserOn = true; p1b.brightness = 0; p1b.targetBrightness = 0;
   p2.deleted  = false; p2.speedMult  = 1.0;  p2.tilt  = 0; p2.targetTilt  = 0; p2.scale  = 1; p2.targetScale  = 1; p2.brightness  = 0; p2.targetBrightness  = 0;
   p2b.deleted = false; p2b.speedMult = 1.0;  p2b.tilt = 0; p2b.targetTilt = 0; p2b.scale = 1; p2b.targetScale = 1; p2b.brightness = 0; p2b.targetBrightness = 0;
   _cpuShootState2.timer  = 5.0;
@@ -910,14 +910,14 @@ function shootBall(b, shooter, paddleGroup, dir, shooterZ) {
 function applyP1BrickEffect(idx) {
   if (idx === 0) {
     paddleFlash[0] = 1.0;
-    setTimeout(() => { if (gameState === 'playing') { p1.deleted = true; paddle1.visible = false; } }, 280);
+    setTimeout(() => { if (gameState === 'playing') { p1.deleted = true; paddle1.visible = false; for (const b of balls) if (b.shooterPaddle === paddle1)  b.shooterPaddle = null; } }, 280);
   } else if (idx === 1) {
     paddleFlash[0] = 1.0; p1.lerpSpeed = PADDLE_LERP_SLOW;
   } else if (idx === 3) {
     paddleFlash[1] = 1.0; p1b.lerpSpeed = PADDLE_LERP_SLOW;
   } else if (idx === 4) {
     paddleFlash[1] = 1.0;
-    setTimeout(() => { if (gameState === 'playing') { p1b.deleted = true; paddle1b.visible = false; } }, 280);
+    setTimeout(() => { if (gameState === 'playing') { p1b.deleted = true; paddle1b.visible = false; for (const b of balls) if (b.shooterPaddle === paddle1b) b.shooterPaddle = null; } }, 280);
   }
 }
 
