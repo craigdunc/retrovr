@@ -202,7 +202,7 @@ function startCamAnim(fromPos, fromTgt, toPos, toTgt, onDone) {
 const ARENA_MINI_POS    = new THREE.Vector3(0, 0.75, 0.6);
 const ARENA_MINI_SCALE  = 0.18;
 const ARENA_MINI_ROT_Y  = Math.PI / 4;
-const ARENA_FULL_POS    = new THREE.Vector3(0, 0.1, -0.8);
+const ARENA_FULL_POS    = new THREE.Vector3(0, 0.4, -0.8);
 const ARENA_FULL_SCALE  = 1.0;
 const ARENA_FULL_ROT_Y  = 0;
 const ARENA_ANIM_DURATION = 1.5;
@@ -599,8 +599,8 @@ function triggerBounceRing(x, y, z, axis) {
 // ── Game state ────────────────────────────────────────────────────────────────
 const PADDLE_LERP_FAST = 80;   // effectively instant (clamped to 1 at 60 fps)
 const PADDLE_LERP_SLOW = 4;    // ~6% per frame — noticeable drag
-const MID_Y = AY + 0.22;  // shoulder height of avatar
-const WIN_SCORE = 11;
+const MID_Y = AY + 0.17;  // mid-chest height of avatar (centre of brick area)
+const WIN_SCORE = 100;
 let p1Score = 0, p2Score = 0;
 const scoreEl   = document.getElementById('score');
 const scoreP1El = document.getElementById('score-p1');
@@ -623,7 +623,7 @@ const attractEl   = document.getElementById('attract');
 const gameoverEl  = document.getElementById('gameover');
 const winnerEl    = document.getElementById('winner');
 
-const PADDLE_Y_MAX = AY + 0.27;  // top of character head
+const PADDLE_Y_MAX = AY + 0.22;  // just above character bricks
 function clampPaddle(p) {
   p.x = THREE.MathUtils.clamp(p.x, -AW / 2, AW / 2);
   p.y = THREE.MathUtils.clamp(p.y,  AY,      PADDLE_Y_MAX);
@@ -955,7 +955,7 @@ function updateXRPaddles(frame) {
     }
     const target = isRight ? p1 : p1b;
     target.targetX          = wx * P1_VR_SENS;
-    target.targetY          = ARENA_CY + (wy - ARENA_CY) * P1_VR_SENS;
+    target.targetY          = MID_Y + (wy - (ARENA_FULL_POS.y + MID_Y)) * P1_VR_SENS;
     const realH = isRight ? realHand1 : realHand1b;
     realH.visible = true;
     realH.position.set(wx, wy - REAL_HAND_R, wz);
