@@ -30,17 +30,22 @@
       color: #aaa; font-family: 'Courier New', monospace; font-size: 14px;
       margin-top: 24px; letter-spacing: 0.15em; animation: blink 1.2s step-end infinite;
     }
-    #score {
+    #health-bar {
       position: absolute; top: 20px; left: 0; width: 100%; text-align: center;
-      color: #fff; font-family: 'Courier New', monospace; font-size: 48px;
-      font-weight: bold; letter-spacing: 0.15em; pointer-events: none;
-      opacity: 0; transition: opacity 0.4s;
+      display: flex; justify-content: center; align-items: center; gap: 24px;
+      pointer-events: none; opacity: 0; transition: opacity 0.4s;
+      font-family: 'Courier New', monospace; font-size: 14px; color: #888;
+      letter-spacing: 0.1em;
     }
-    #score.visible { opacity: 1; }
-    #score-p1, #score-p2 { color: #fff; }
-    .score-pip { display: inline-block; width: 11px; height: 11px; vertical-align: top; margin-top: 7px; margin-right: 6px; }
-    .score-pip.p1 { background: #44aaff; }
-    .score-pip.p2 { background: #ff4466; }
+    #health-bar.visible { opacity: 1; }
+    .health-pips { display: flex; gap: 5px; }
+    .health-pip {
+      width: 26px; height: 10px; border-radius: 2px;
+      transition: opacity 0.4s, background 0.3s;
+    }
+    .health-pip.p1 { background: #44aaff; }
+    .health-pip.p2 { background: #ff4466; }
+    .health-pip.empty { opacity: 0.15; }
     #level-banner {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -52,7 +57,13 @@
   </style>
 </head>
 <body>
-<div id="score"><span id="score-p1"><span class="score-pip p1"></span>0</span>&nbsp;&nbsp;&nbsp;<span id="score-p2"><span class="score-pip p2"></span>0</span></div>
+<div id="health-bar">
+  <span>P1</span>
+  <div id="health-p1" class="health-pips"></div>
+  <span style="color:#555">│</span>
+  <div id="health-p2" class="health-pips"></div>
+  <span>P2</span>
+</div>
 <div id="attract">
   <img id="attract-logo"  src="DuelVR.png" alt="TennisVR">
   <img id="attract-start" src="Start.png"    alt="START">
@@ -567,12 +578,21 @@ function updateVRBricks() {
   const W = vrScoreCanvas.width, H = vrScoreCanvas.height;
   const ctx = vrScoreCtx;
   ctx.clearRect(0, 0, W, H);
-  ctx.font = 'bold 56px monospace'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
-  const pipSz = 14, pipTop = H / 2 - 30;
-  ctx.fillStyle = '#44aaff'; ctx.fillRect(W * 0.16, pipTop, pipSz, pipSz);
-  ctx.fillStyle = '#fff';    ctx.fillText(p1Score, W * 0.16 + pipSz + 7, H / 2);
-  ctx.fillStyle = '#ff4466'; ctx.fillRect(W * 0.56, pipTop, pipSz, pipSz);
-  ctx.fillStyle = '#fff';    ctx.fillText(p2Score, W * 0.56 + pipSz + 7, H / 2);
+  // Draw health pips for both sides
+  const pipW = 36, pipH = 14, gap = 6, midX = W / 2;
+  const totalW = MAX_HEALTH * (pipW + gap) - gap;
+  // P1 pips (left of centre)
+  for (let i = 0; i < MAX_HEALTH; i++) {
+    const x = midX - totalW - 20 + i * (pipW + gap);
+    ctx.fillStyle = i < p1Health ? '#44aaff' : 'rgba(68,170,255,0.15)';
+    ctx.fillRect(x, H / 2 - pipH / 2, pipW, pipH);
+  }
+  // P2 pips (right of centre)
+  for (let i = 0; i < MAX_HEALTH; i++) {
+    const x = midX + 20 + i * (pipW + gap);
+    ctx.fillStyle = i < p2Health ? '#ff4466' : 'rgba(255,68,102,0.15)';
+    ctx.fillRect(x, H / 2 - pipH / 2, pipW, pipH);
+  }
   vrScoreTex.needsUpdate = true;
 }
 
@@ -723,13 +743,13 @@ function updateDebris(dt) {
 const PADDLE_LERP_FAST = 80;   // effectively instant (clamped to 1 at 60 fps)
 const PADDLE_LERP_SLOW = 4;    // ~6% per frame — noticeable drag
 const MID_Y = AY + 0.17;  // mid-chest height of avatar (centre of brick area)
-const WIN_SCORE = 100;
-let p1Score = 0, p2Score = 0;
+const MAX_HEALTH = 3;
+let p1Health = MAX_HEALTH, p2Health = MAX_HEALTH;
 let currentLevel = 1;
 const LEVEL_DESCS = ['', 'RIGHT HAND ONLY', 'BOTH HANDS'];
-const scoreEl      = document.getElementById('score');
-const scoreP1El    = document.getElementById('score-p1');
-const scoreP2El    = document.getElementById('score-p2');
+const healthBarEl  = document.getElementById('health-bar');
+const healthP1El   = document.getElementById('health-p1');
+const healthP2El   = document.getElementById('health-p2');
 const levelBannerEl = document.getElementById('level-banner');
 const levelTextEl   = document.getElementById('level-text');
 const levelSubEl    = document.getElementById('level-sub');
@@ -787,22 +807,26 @@ function resetPaddles() {
   _cpuShootState2b.timer = 5.5;
 }
 
-function updateScoreDisplay() {
-  scoreP1El.innerHTML = '<span class="score-pip p1"></span>' + p1Score;
-  scoreP2El.innerHTML = '<span class="score-pip p2"></span>' + p2Score;
+function updateHealthDisplay() {
+  healthP1El.innerHTML = '';
+  for (let i = 0; i < MAX_HEALTH; i++) {
+    healthP1El.innerHTML += `<div class="health-pip p1${i >= p1Health ? ' empty' : ''}"></div>`;
+  }
+  healthP2El.innerHTML = '';
+  for (let i = 0; i < MAX_HEALTH; i++) {
+    healthP2El.innerHTML += `<div class="health-pip p2${i >= p2Health ? ' empty' : ''}"></div>`;
+  }
   updateVRBricks();
 }
 
-function scorePoint(scorer, pts = 1) {
-  if (scorer === 0) p1Score += pts; else p2Score += pts;
-  updateScoreDisplay();
-  soundScore();
-  if (p1Score >= WIN_SCORE || p2Score >= WIN_SCORE) {
-    endGame(p1Score >= WIN_SCORE ? 1 : 0);
+function takeDamage(sideIdx, amount = 1) {
+  if (sideIdx === 0) p1Health = Math.max(0, p1Health - amount);
+  else               p2Health = Math.max(0, p2Health - amount);
+  updateHealthDisplay();
+  if (p1Health <= 0 || p2Health <= 0) {
+    endGame(p1Health <= 0 ? 0 : 1);
   }
 }
-
-const soundScore = () => { blip(600, 0.09, 0.45); setTimeout(() => blip(800, 0.12, 0.5), 90); };
 
 function startServe(afterPoint = false) {
   missDetected[0] = missDetected[1] = false;
@@ -837,7 +861,7 @@ function serveAttract() {
 
 function enterAttractMode(fromGame = false) {
   gameState = 'attract'; serving = false;
-  scoreEl.classList.remove('visible');
+  healthBarEl.classList.remove('visible');
   setAllPaddlesVisible(false);
   serveAttract();
   if (renderer.xr.isPresenting) {
@@ -875,12 +899,12 @@ function endGame(loserIdx) {
 
 function startGame() {
   gameState = 'playing';
-  p1Score = 0; p2Score = 0;
-  scoreEl.classList.add('visible');
+  p1Health = MAX_HEALTH; p2Health = MAX_HEALTH;
+  healthBarEl.classList.add('visible');
   resetPaddles();
   resetBricks();
   if (currentLevel === 1) { p1b.deleted = true; p2b.deleted = true; }
-  updateScoreDisplay();
+  updateHealthDisplay();
   showLevelBanner();
   vrLogoMesh.visible = false; vrStartMesh.visible = false;
   if (renderer.xr.isPresenting) {
@@ -1284,10 +1308,13 @@ function updateCenterWin(dt) {
     }
   } else if (cw.phase === 'explode') {
     if (cw.timer <= 0) {
-      const scorer = cw.scorer;
+      const loserIdx = cw.sideIdx;
       _centerWin = null;
-      gameState = 'playing';   // restore so scorePoint → endGame works
-      scorePoint(scorer, 100);
+      gameState = 'playing';   // restore so endGame works
+      // Kill shot — drain all remaining health
+      if (loserIdx === 0) p1Health = 0; else p2Health = 0;
+      updateHealthDisplay();
+      endGame(loserIdx);
     }
   }
 }
@@ -1392,6 +1419,7 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
         brick.edgeMat.color.setHex(sideIdx === 0 ? 0x44aaff : 0xff4466);
         brick.state = 'damaged';
         soundBrick();
+        takeDamage(sideIdx);
         updateVRBricks();
       } else {
         brick.alive = false;
@@ -1406,6 +1434,7 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
         } else {
           soundBoom();
           updateVRBricks();
+          takeDamage(sideIdx);
           if (sideIdx === 0) applyP1BrickEffect(i);
           else               applyP2BrickEffect(i);
         }
@@ -1437,6 +1466,7 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
           bp.edgeMat.color.setHex(sideIdx === 0 ? 0x44aaff : 0xff4466);
           bp.state = 'damaged';
           soundBrick();
+          takeDamage(sideIdx);
         } else {
           // Second hit on head — game over
           soundCenterBrick();
@@ -1451,6 +1481,7 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
         bp.edges.scale.set(shrink, shrink, shrink);
         bp.state = 'hit';
         soundBrick();
+        takeDamage(sideIdx);
         // Slow down movement
         if (sideIdx === 0) {
           p1.lerpSpeed = PADDLE_LERP_SLOW;
@@ -1581,8 +1612,6 @@ function blip(freq, dur, vol = 0.35) {
 
 const soundPaddle = () => blip(480, 0.08, 0.4);
 const soundWall   = () => blip(240, 0.06, 0.2);
-const soundBrick  = () => { blip(320, 0.07, 0.45); setTimeout(() => blip(180, 0.12, 0.35), 70); };
-const soundBoom   = () => { blip(100, 0.25, 0.9); setTimeout(() => blip(65, 0.35, 0.7), 30); setTimeout(() => blip(40, 0.45, 0.5), 80); };
 const soundCenterBrick = () => {
   blip(220, 0.3, 0.5);
   setTimeout(() => blip(330, 0.35, 0.55), 150);
@@ -1594,6 +1623,47 @@ function soundWin() {
   blip(440, 0.12, 0.5); setTimeout(() => blip(560, 0.14, 0.55), 140);
   setTimeout(() => blip(880, 0.22, 0.6), 300);
 }
+
+// ── sfxr-style noise hit sound ────────────────────────────────────────────────
+function soundHit() {
+  if (audioCtx.state !== 'running') return;
+  try {
+    const sr = audioCtx.sampleRate;
+    const envA = 0, envS = 0.272, envP = 0.266, envD = 0.218;
+    const baseFreq = 0.0796, freqRamp = -0.3215;
+    const vol = 0.25;
+    const totalSec = envA + envS + envD;
+    const len = Math.ceil(sr * totalSec);
+    const buf = audioCtx.createBuffer(1, len, sr);
+    const data = buf.getChannelData(0);
+    let phase = 0, period = 100.0 / (baseFreq * baseFreq + 0.001);
+    let fperiod = period, maxperiod = 1e5;
+    const fslide = 1.0 + freqRamp * freqRamp * (freqRamp < 0 ? -1 : 1) * 0.01;
+    let prevSample = 0;
+    for (let i = 0; i < len; i++) {
+      const t = i / sr;
+      // Envelope
+      let env;
+      if (t < envA) env = t / Math.max(envA, 0.0001);
+      else if (t < envA + envS) { env = 1.0 + (1.0 - (t - envA) / envS) * envP; env = Math.min(env, 1.0 + envP); }
+      else { const dt2 = (t - envA - envS) / Math.max(envD, 0.0001); env = 1.0 - Math.min(dt2, 1.0); }
+      // Frequency slide
+      fperiod *= fslide;
+      if (fperiod > maxperiod) fperiod = maxperiod;
+      period = Math.max(fperiod, 8);
+      // Noise waveform
+      phase++;
+      if (phase >= period) { phase = 0; prevSample = Math.random() * 2 - 1; }
+      data[i] = prevSample * env * vol;
+    }
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(audioCtx.destination);
+    src.start();
+  } catch(e) {}
+}
+const soundBrick = soundHit;
+const soundBoom  = () => { soundHit(); setTimeout(soundHit, 60); };
 
 // ── Resize ────────────────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
