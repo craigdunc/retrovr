@@ -1106,23 +1106,22 @@ function updateXRPaddles(frame, dt) {
     }
     target.prevWz = wz; target.prevWx = wx; target.prevWy = wy;
 
+    const depth = wz - headZ;
     let t, rawT;
     if (src.hand) {
-      const depth = wz - headZ;
       rawT = (depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK);
       t = THREE.MathUtils.clamp(rawT, 0, 1);
       if (isRight) handledRight = true; else handledLeft = true;
     } else {
-      const depth = wz - headZ;
       const tDepth   = THREE.MathUtils.clamp((depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK), 0, 1);
       const tTrigger = src.gamepad?.buttons[0]?.value ?? 0;
       t = Math.max(tDepth, tTrigger);
-      rawT = t; // controllers: no depth-snap, trigger handles it
+      rawT = t;
     }
 
-    // Snap disc to hand when wrist crosses back behind the back plane
+    // Snap: deliberate retraction — hand must be 15cm BEHIND head, not just behind rest position
     if (t > 0.2) target.handWasOut = true;
-    if (rawT < 0 && target.handWasOut) {
+    if (depth < -0.15 && target.handWasOut) {
       target.handWasOut = false;
       const ballIdx = target === p1 ? 0 : 1;
       const bd = balls[ballIdx];
@@ -1441,15 +1440,22 @@ function updateBall(dt) {
       b.flyTime += dt;
       // CPU auto-recall after timeout
       if (b.flyTime > 4.5 && (b.shooter === p2 || b.shooter === p2b)) { b.state = 'returning'; continue; }
-      // Hand influence on flying P1 discs: pull (Z) + lateral steering (X, Y)
-      if (b.shooter === p1) {
-        if (p1.pullRate > 0) b.vel.z -= p1.pullRate * PULL_FORCE;
-        b.vel.x += p1.xRate * STEER_FORCE;
-        b.vel.y += p1.yRate * STEER_FORCE;
-      } else if (b.shooter === p1b) {
-        if (p1b.pullRate > 0) b.vel.z -= p1b.pullRate * PULL_FORCE;
-        b.vel.x += p1b.xRate * STEER_FORCE;
-        b.vel.y += p1b.yRate * STEER_FORCE;
+      // Hand influence on flying P1 discs: guided pull + lateral steering
+      if (b.shooter === p1 || b.shooter === p1b) {
+        const sh = b.shooter;
+        b.vel.x += sh.xRate * STEER_FORCE;
+        b.vel.y += sh.yRate * STEER_FORCE;
+        if (sh.pullRate > 0) {
+          const gdx = sh.x - b.pos.x, gdy = sh.y - b.pos.y, gdz = b.shooterZ - b.pos.z;
+          const gd = Math.sqrt(gdx*gdx + gdy*gdy + gdz*gdz);
+          if (gd < BALL_R * 6) {
+            b.state = 'idle'; b.mesh.visible = false; b.clearTrail();
+            if (b.shooterPaddle) { b.shooterPaddle.visible = true; b.shooterPaddle = null; }
+            soundPaddle(); continue;
+          }
+          const f = sh.pullRate * PULL_FORCE;
+          b.vel.x += (gdx/gd) * f; b.vel.y += (gdy/gd) * f; b.vel.z += (gdz/gd) * f;
+        }
       }
       // P1 paddles deflect incoming balls
       if (b.vel.z < 0 && b.pos.z < PADDLE_INSET + BALL_R) {
