@@ -134,17 +134,34 @@ The first 1978-tier prototype. Validates the core spatial premise: a ball moving
   - Stand at P1 end (z=0). Left hand/controller tracks P1 paddle, right hand/controller tracks P2 paddle
   - The arena is 2m × 2m × 3m at waist height — ball travels in shared vertical space
 
-### `duel/duel.html` — DUEL arena visualization (non-interactive)
-Visualization of the DUEL game layout. Shows the table-tennis arena, both players in wireframe, block row (chest + paddle + speed blocks), shield vs. shoot-mode discs, and animated wall-bounce disc trajectory.
+### `DuelVR/DuelVR.html` — DUEL (main active prototype, playable)
+The full 3D WebXR implementation of DUEL. CPU opponent, hand-tracking + controller support, bricks with destructive effects, attract screen, and VR/AR modes.
 
-- **Desktop:** Open directly in Chrome or Firefox.
-- **Quest 3 (WebXR):** Serve from `duel/` directory, tap Enter VR to see at 1:1 scale.
+**What's in it:**
+- Two discs per player (one per hand), tracked via Quest 3 hand tracking or controllers
+- **Shield → shoot:** hold hand close = full-disc shield; extend hand forward = disc thins to a coin, laser appears; snap to full extension = fires the disc. Returns automatically (Thor/Tron rules)
+- 5 bricks at each player's wall: outer bricks delete that hand's disc permanently, inner bricks add movement lag, centre brick (white) = instant win when destroyed
+- CPU P2 with defensive spread and timed shooting
+- Arena animates in from a miniature desktop model when entering VR
+- VR floating scoreboard; WIN_SCORE = 100 (first to 100 points or centre brick)
+
+**Desktop controls:**
+- Move mouse = move P1 paddles (both hands track together)
+- Left click = fire disc toward click direction; click again when it returns to fire again
+- Any key or click on attract screen = start game
+
+**Quest 3 (WebXR):** Serve from `DuelVR/` directory. Both hands track independently. Tilt wrist forward to charge, snap to full extension to fire.
+
+### `duel/duel.html` — DUEL arena (2D, legacy)
+Earlier 2D canvas version of DUEL. Two players face off at a table, each with a circular shield. Mouse controls P1, CPU controls P2. First to 7 wins.
+
+- Open directly in Chrome or Firefox. No server needed.
 
 ## Running
 
 **Desktop:** Open any `.html` directly in Chrome or Firefox. No server needed.
 
 **Quest 3 (WebXR):** WebXR requires HTTPS or localhost — `file://` won't work.
-1. Run `python -m http.server 8080` from the game's subdirectory
-2. On Quest 3, open `http://<your-local-ip>:8080/<game>.html` in the Oculus Browser
-3. Tap **Enter VR** — arena renders at 1:1 physical scale
+1. Run `python -m http.server 8080` from the game's subdirectory (e.g. `DuelVR/`)
+2. On Quest 3, open `http://<your-local-ip>:8080/DuelVR.html` in the Oculus Browser
+3. Tap **Enter VR** — arena animates in from miniature to 1:1 scale
