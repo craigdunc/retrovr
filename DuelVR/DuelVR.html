@@ -156,9 +156,8 @@ const TILT_Z_FRONT = 0.24;              // hand depth ahead of head (m) = full h
 const P1_SENS      = 1.8;
 const P1_VR_SENS   = 0.25;  // VR game frisbee sensitivity
 const REAL_HAND_R  = 0.10;  // real-world hand ring radius (~palm size)
-const SHOOT_SPEED  = 2.4;               // m/s — matches pong3d serve speed
+const SHOOT_SPEED  = 6.0;               // m/s — full power launch
 const RETURN_SPEED = SHOOT_SPEED * 2;   // m/s — Thor's hammer return
-const PULL_FORCE   = 5.0;               // pull acceleration multiplier (m/s per m/s of hand speed)
 const STEER_FORCE  = 0.8;               // aftertouch swerve — m/s² per m/s of hand speed
 const P1_MAP_S     = 0.25;             // hand→paddle scale: arena walls map to debug box edges
 const P1_MAP_FLOOR = AY + 0.4;         // arena floor in XR/world Y (AY + ARENA_FULL_POS.y)
@@ -1470,22 +1469,11 @@ function updateBall(dt) {
       b.flyTime += dt;
       // CPU auto-recall after timeout
       if (b.flyTime > 4.5 && (b.shooter === p2 || b.shooter === p2b)) { b.state = 'returning'; continue; }
-      // Hand influence on flying P1 discs: guided pull + lateral steering
+      // Hand influence on flying P1 discs: lateral steering (aftertouch)
       if (b.shooter === p1 || b.shooter === p1b) {
         const sh = b.shooter;
         b.vel.x += sh.xRate * STEER_FORCE * dt;
         b.vel.y += sh.yRate * STEER_FORCE * dt;
-        if (sh.pullRate > 0) {
-          const gdx = sh.x - b.pos.x, gdy = sh.y - b.pos.y, gdz = b.shooterZ - b.pos.z;
-          const gd = Math.sqrt(gdx*gdx + gdy*gdy + gdz*gdz);
-          if (gd < BALL_R * 6) {
-            b.state = 'idle'; b.mesh.visible = false; b.clearTrail();
-            if (b.shooterPaddle) { b.shooterPaddle.visible = true; b.shooterPaddle = null; }
-            soundPaddle(); continue;
-          }
-          const f = sh.pullRate * PULL_FORCE;
-          b.vel.x += (gdx/gd) * f; b.vel.y += (gdy/gd) * f; b.vel.z += (gdz/gd) * f;
-        }
       }
       // P1 paddles deflect incoming balls
       if (b.vel.z < 0 && b.pos.z < PADDLE_INSET + BALL_R) {
