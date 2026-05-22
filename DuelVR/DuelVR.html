@@ -41,6 +41,14 @@
     .score-pip { display: inline-block; width: 11px; height: 11px; vertical-align: top; margin-top: 7px; margin-right: 6px; }
     .score-pip.p1 { background: #44aaff; }
     .score-pip.p2 { background: #ff4466; }
+    #level-banner {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      pointer-events: none; opacity: 0; transition: opacity 0.45s;
+    }
+    #level-banner.visible { opacity: 1; }
+    #level-text { color: #fff; font-family: 'Courier New', monospace; font-size: 68px; font-weight: bold; letter-spacing: 0.2em; }
+    #level-sub  { color: #666; font-family: 'Courier New', monospace; font-size: 15px; letter-spacing: 0.22em; margin-top: 14px; }
   </style>
 </head>
 <body>
@@ -52,6 +60,10 @@
 <div id="gameover">
   <div id="winner">P1 WINS</div>
   <div id="gameover-start">PRESS ANY KEY TO PLAY AGAIN</div>
+</div>
+<div id="level-banner">
+  <div id="level-text">LEVEL 1</div>
+  <div id="level-sub">RIGHT HAND ONLY</div>
 </div>
 
 <script type="importmap">
@@ -147,6 +159,7 @@ const REAL_HAND_R  = 0.10;  // real-world hand ring radius (~palm size)
 const SHOOT_SPEED  = 2.4;               // m/s — matches pong3d serve speed
 const RETURN_SPEED = SHOOT_SPEED * 2;   // m/s — Thor's hammer return
 const PULL_FORCE   = 5.0;               // pull acceleration multiplier (m/s per m/s of hand speed)
+const STEER_FORCE  = 1.8;               // lateral/vertical steering influence on flying disc
 const ARENA_CY     = AY + AH * 0.5;
 
 // Bricks: 5 per side, at back of each player's half
@@ -696,9 +709,22 @@ const PADDLE_LERP_SLOW = 4;    // ~6% per frame — noticeable drag
 const MID_Y = AY + 0.17;  // mid-chest height of avatar (centre of brick area)
 const WIN_SCORE = 100;
 let p1Score = 0, p2Score = 0;
-const scoreEl   = document.getElementById('score');
-const scoreP1El = document.getElementById('score-p1');
-const scoreP2El = document.getElementById('score-p2');
+let currentLevel = 1;
+const LEVEL_DESCS = ['', 'RIGHT HAND ONLY', 'BOTH HANDS'];
+const scoreEl      = document.getElementById('score');
+const scoreP1El    = document.getElementById('score-p1');
+const scoreP2El    = document.getElementById('score-p2');
+const levelBannerEl = document.getElementById('level-banner');
+const levelTextEl   = document.getElementById('level-text');
+const levelSubEl    = document.getElementById('level-sub');
+let _levelBannerTimer = null;
+function showLevelBanner() {
+  levelTextEl.textContent = 'LEVEL ' + currentLevel;
+  levelSubEl.textContent  = LEVEL_DESCS[currentLevel];
+  levelBannerEl.classList.add('visible');
+  if (_levelBannerTimer) clearTimeout(_levelBannerTimer);
+  _levelBannerTimer = setTimeout(() => { levelBannerEl.classList.remove('visible'); _levelBannerTimer = null; }, 1800);
+}
 
 // balls[0]=p1-right  balls[1]=p1b-left  balls[2]=p2-right  balls[3]=p2b-left
 const balls = [
@@ -707,8 +733,8 @@ const balls = [
   makeBallObject(0xff3344),  // p2 right  — red glow
   makeBallObject(0xff6622),  // p2b left  — orange-red glow
 ];
-const p1  = { x: SHOULDER_X,  y: MID_Y, targetX: SHOULDER_X,  targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0, prevWz: 0, pullRate: 0, handWasOut: false };
-const p1b = { x: -SHOULDER_X, y: MID_Y, targetX: -SHOULDER_X, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0, prevWz: 0, pullRate: 0, handWasOut: false };
+const p1  = { x: SHOULDER_X,  y: MID_Y, targetX: SHOULDER_X,  targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0, prevWz: 0, prevWx: 0, prevWy: 0, pullRate: 0, xRate: 0, yRate: 0, handWasOut: false };
+const p1b = { x: -SHOULDER_X, y: MID_Y, targetX: -SHOULDER_X, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0, prevWz: 0, prevWx: 0, prevWy: 0, pullRate: 0, xRate: 0, yRate: 0, handWasOut: false };
 let _p1CenterX = 0;
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
 const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
@@ -737,8 +763,8 @@ function setAllPaddlesVisible(v) {
 function resetPaddles() {
   p1.x  =  SHOULDER_X; p1.targetX  =  SHOULDER_X;
   p1b.x = -SHOULDER_X; p1b.targetX = -SHOULDER_X;
-  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.wasLaserOn  = true; p1.brightness  = 0; p1.targetBrightness  = 0; p1.prevWz  = 0; p1.pullRate  = 0; p1.handWasOut  = false;
-  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.wasLaserOn = true; p1b.brightness = 0; p1b.targetBrightness = 0; p1b.prevWz = 0; p1b.pullRate = 0; p1b.handWasOut = false;
+  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.wasLaserOn  = true; p1.brightness  = 0; p1.targetBrightness  = 0; p1.prevWz  = 0; p1.prevWx  = 0; p1.prevWy  = 0; p1.pullRate  = 0; p1.xRate  = 0; p1.yRate  = 0; p1.handWasOut  = false;
+  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.wasLaserOn = true; p1b.brightness = 0; p1b.targetBrightness = 0; p1b.prevWz = 0; p1b.prevWx = 0; p1b.prevWy = 0; p1b.pullRate = 0; p1b.xRate = 0; p1b.yRate = 0; p1b.handWasOut = false;
   p2.deleted  = false; p2.speedMult  = 1.0;  p2.tilt  = 0; p2.targetTilt  = 0; p2.scale  = 1; p2.targetScale  = 1; p2.brightness  = 0; p2.targetBrightness  = 0;
   p2b.deleted = false; p2b.speedMult = 1.0;  p2b.tilt = 0; p2b.targetTilt = 0; p2b.scale = 1; p2b.targetScale = 1; p2b.brightness = 0; p2b.targetBrightness = 0;
   _cpuShootState2.timer  = 5.0;
@@ -815,6 +841,7 @@ function enterAttractMode(fromGame = false) {
 }
 
 function endGame(loserIdx) {
+  if (loserIdx === 1) currentLevel = currentLevel === 1 ? 2 : 1; // P1 wins → advance level
   gameState = 'gameover';
   for (const b of balls) { b.state = 'idle'; if (b.shooterPaddle) { b.shooterPaddle.visible = true; b.shooterPaddle = null; } b.clearTrail(); }
   balls[0].vel.set(0, 0, 0);
@@ -836,7 +863,9 @@ function startGame() {
   scoreEl.classList.add('visible');
   resetPaddles();
   resetBricks();
+  if (currentLevel === 1) { p1b.deleted = true; p2b.deleted = true; }
   updateScoreDisplay();
+  showLevelBanner();
   vrLogoMesh.visible = false; vrStartMesh.visible = false;
   if (renderer.xr.isPresenting) {
     vrScoreMesh.visible = true; vrScoreTargetY = SCORE_GAME_Y;
@@ -961,8 +990,8 @@ function updateCpu(dt) {
     cpuMoveToward(p2b, ref.pos.x + cpuOff2.x, ref.pos.y + cpuOff2.y, dt);
   }
   clampPaddle(p2); clampPaddle(p2b);
-  // Simulated head = midpoint of hands → drives P2 brick group
-  updateBrickGroupX(1, (p2.x + p2b.x) / 2);
+  // Simulated head = midpoint of hands (single-hand in level 1)
+  updateBrickGroupX(1, currentLevel === 1 ? p2.x : (p2.x + p2b.x) / 2);
 }
 
 // ── CPU shooting ─────────────────────────────────────────────────────────────
@@ -999,7 +1028,7 @@ function _cpuDoShoot(paddle, ball, group, state, dt) {
 function updateCpuShooting(dt) {
   if (gameState !== 'playing') return;
   _cpuDoShoot(p2,  balls[2], paddle2,  _cpuShootState2,  dt);
-  _cpuDoShoot(p2b, balls[3], paddle2b, _cpuShootState2b, dt);
+  if (currentLevel !== 1) _cpuDoShoot(p2b, balls[3], paddle2b, _cpuShootState2b, dt);
 }
 
 // ── WebXR ─────────────────────────────────────────────────────────────────────
@@ -1069,9 +1098,13 @@ function updateXRPaddles(frame, dt) {
     if (wx === undefined) continue;
     const target = isRight ? p1 : p1b;
 
-    // Pull-rate: positive when hand moves back toward player
-    if (dt > 0) target.pullRate = Math.max(0, (target.prevWz - wz) / dt);
-    target.prevWz = wz;
+    // Hand velocity tracking — pull (Z back) and lateral steering (X, Y)
+    if (dt > 0) {
+      target.pullRate = Math.max(0, (target.prevWz - wz) / dt);
+      target.xRate    = (wx - target.prevWx) / dt;
+      target.yRate    = (wy - target.prevWy) / dt;
+    }
+    target.prevWz = wz; target.prevWx = wx; target.prevWy = wy;
 
     let t, rawT;
     if (src.hand) {
@@ -1100,6 +1133,11 @@ function updateXRPaddles(frame, dt) {
       }
     }
 
+    if (target.deleted) {
+      (isRight ? laser1 : laser1b).line.visible = false;
+      (isRight ? realHand1 : realHand1b).visible = false;
+      continue;
+    }
     target.targetX          = wx;
     target.targetY          = MID_Y + (wy - (headY - 0.75));
     const realH = isRight ? realHand1 : realHand1b;
@@ -1403,9 +1441,16 @@ function updateBall(dt) {
       b.flyTime += dt;
       // CPU auto-recall after timeout
       if (b.flyTime > 4.5 && (b.shooter === p2 || b.shooter === p2b)) { b.state = 'returning'; continue; }
-      // Hand pull force for P1 balls — pulling hand back attracts disc toward player
-      if (b.shooter === p1  && p1.pullRate  > 0) b.vel.z -= p1.pullRate  * PULL_FORCE;
-      if (b.shooter === p1b && p1b.pullRate > 0) b.vel.z -= p1b.pullRate * PULL_FORCE;
+      // Hand influence on flying P1 discs: pull (Z) + lateral steering (X, Y)
+      if (b.shooter === p1) {
+        if (p1.pullRate > 0) b.vel.z -= p1.pullRate * PULL_FORCE;
+        b.vel.x += p1.xRate * STEER_FORCE;
+        b.vel.y += p1.yRate * STEER_FORCE;
+      } else if (b.shooter === p1b) {
+        if (p1b.pullRate > 0) b.vel.z -= p1b.pullRate * PULL_FORCE;
+        b.vel.x += p1b.xRate * STEER_FORCE;
+        b.vel.y += p1b.yRate * STEER_FORCE;
+      }
       // P1 paddles deflect incoming balls
       if (b.vel.z < 0 && b.pos.z < PADDLE_INSET + BALL_R) {
         const r0 = PADDLE_R * p1.scale + BALL_R, r1 = PADDLE_R * p1b.scale + BALL_R;
@@ -1480,8 +1525,8 @@ renderer.setAnimationLoop((time, frame) => {
   if (frame) {
     updateXRPaddles(frame, dt);
     if (gameState === 'playing') {
-      if (p1.laserOn  && !p1.wasLaserOn)  shootBall(balls[0], p1,  paddle1,  p1LaserDir,  PADDLE_INSET);
-      if (p1b.laserOn && !p1b.wasLaserOn) shootBall(balls[1], p1b, paddle1b, p1bLaserDir, PADDLE_INSET);
+      if (p1.laserOn  && !p1.wasLaserOn  && !p1.deleted)  shootBall(balls[0], p1,  paddle1,  p1LaserDir,  PADDLE_INSET);
+      if (p1b.laserOn && !p1b.wasLaserOn && !p1b.deleted) shootBall(balls[1], p1b, paddle1b, p1bLaserDir, PADDLE_INSET);
     }
     p1.wasLaserOn  = p1.laserOn;
     p1b.wasLaserOn = p1b.laserOn;
