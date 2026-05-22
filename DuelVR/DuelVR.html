@@ -1232,6 +1232,11 @@ function updateXRPaddles(frame, dt) {
         ringMat.opacity = 0.8;
         target.targetScale = 1;
         target.shieldMode = false;
+        // Throw wind-up arc: sweep frisbee inward toward chest as tilt increases
+        const sweep = rawT; // 0 at rear plane, 1 at front plane
+        const chestGameX = headX * P1_MAP_S; // chest centre in game X
+        const arcBlend = Math.sin(sweep * Math.PI) * 0.7; // sinusoidal arc, peaks at mid-tilt
+        target.targetX += (chestGameX - target.targetX) * arcBlend;
       } else {
         // State 3 — SHIELD: behind rear plane → green
         ringMat.color.setHex(0x44ff88);
