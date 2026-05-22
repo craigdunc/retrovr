@@ -170,7 +170,7 @@ const REAL_HAND_R  = 0.14;  // real-world hand ring radius (~palm size)
 const SHOOT_SPEED  = 4.5;               // m/s — powerful but controllable
 const RETURN_SPEED = SHOOT_SPEED * 2;   // m/s — Thor's hammer return
 const STEER_FORCE  = 2.5;               // aftertouch swerve — m/s² per m/s of hand speed
-const P1_MAP_S     = 0.50;             // hand→paddle scale: doubled for responsive defense
+const P1_MAP_S     = 0.35;             // hand→paddle scale: 35% for responsive defense
 const P1_MAP_FLOOR = AY + 0.4;         // arena floor in XR/world Y (AY + ARENA_FULL_POS.y)
 const ARENA_CY     = AY + AH * 0.5;
 
@@ -1772,7 +1772,7 @@ renderer.setAnimationLoop((time, frame) => {
     clampPaddle(p1b);
   }
   // Smooth tilt, scale, and brightness toward targets
-  const ts = Math.min(12 * dt, 1);
+  const ts = Math.min(36 * dt, 1);  // fast visual response for tilt/scale/brightness
   p1.tilt   += (p1.targetTilt   - p1.tilt)   * ts;
   p1b.tilt  += (p1b.targetTilt  - p1b.tilt)  * ts;
   p1.scale  += (p1.targetScale  - p1.scale)  * ts;
