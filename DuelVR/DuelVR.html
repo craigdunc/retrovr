@@ -1183,15 +1183,16 @@ function updateXRPaddles(frame, dt) {
 
     const depth = wz - headZ;
     let t, rawT;
+    const rawDepth = (depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK);
+    
     if (src.hand) {
-      rawT = (depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK);
+      rawT = rawDepth;
       t = THREE.MathUtils.clamp(rawT, 0, 1);
       if (isRight) handledRight = true; else handledLeft = true;
     } else {
-      const tDepth   = THREE.MathUtils.clamp((depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK), 0, 1);
       const tTrigger = src.gamepad?.buttons[0]?.value ?? 0;
-      t = Math.max(tDepth, tTrigger);
-      rawT = t;
+      rawT = (tTrigger > 0.95) ? 1.0 : rawDepth; // Trigger forces FLY state
+      t = Math.max(THREE.MathUtils.clamp(rawDepth, 0, 1), tTrigger);
     }
 
     // Snap: deliberate retraction — hand must be 15cm BEHIND head, not just behind rest position
@@ -1228,34 +1229,32 @@ function updateXRPaddles(frame, dt) {
       target.triggerHeld = (src.gamepad?.buttons[0]?.value ?? 0) > 0.5;
     }
 
-    // Hand ring state visual — 3 states based on hand depth (hand tracking only)
-    if (src.hand) {
-      const ringMat = isRight ? realHand1Mat : realHand1bMat;
-      const baseColor = isRight ? 0x88bbff : 0x66ddff;
-      if (rawT >= 1) {
-        // State 1 — FLY: hand forward of front plane → bright white
-        ringMat.color.setHex(0xffffff);
-        ringMat.opacity = 1.0;
-        target.targetScale = 1;
-        target.shieldMode = false;
-      } else if (rawT >= 0) {
-        // State 2 — TILT: between front and rear planes → player colour
-        ringMat.color.setHex(baseColor);
-        ringMat.opacity = 0.8;
-        target.targetScale = 1;
-        target.shieldMode = false;
-        // Throw wind-up arc: sweep frisbee inward toward chest as tilt increases
-        const sweep = rawT; // 0 at rear plane, 1 at front plane
-        const chestGameX = headX * P1_MAP_S; // chest centre in game X
-        const arcBlend = Math.sin(sweep * Math.PI) * 0.7; // sinusoidal arc, peaks at mid-tilt
-        target.targetX += (chestGameX - target.targetX) * arcBlend;
-      } else {
-        // State 3 — SHIELD: behind rear plane → green
-        ringMat.color.setHex(0x44ff88);
-        ringMat.opacity = 1.0;
-        target.targetScale = 1;
-        target.shieldMode = true;
-      }
+    // Hand ring state visual — 3 states based on hand depth (works for hands & controllers)
+    const ringMat = isRight ? realHand1Mat : realHand1bMat;
+    const baseColor = isRight ? 0x88bbff : 0x66ddff;
+    if (rawT >= 1) {
+      // State 1 — FLY: hand forward of front plane → bright white
+      ringMat.color.setHex(0xffffff);
+      ringMat.opacity = 1.0;
+      target.targetScale = 1;
+      target.shieldMode = false;
+    } else if (rawT >= 0) {
+      // State 2 — TILT: between front and rear planes → player colour
+      ringMat.color.setHex(baseColor);
+      ringMat.opacity = 0.8;
+      target.targetScale = 1;
+      target.shieldMode = false;
+      // Throw wind-up arc: sweep frisbee inward toward chest as tilt increases
+      const sweep = rawT; // 0 at rear plane, 1 at front plane
+      const chestGameX = headX * P1_MAP_S; // chest centre in game X
+      const arcBlend = Math.sin(sweep * Math.PI) * 0.7; // sinusoidal arc, peaks at mid-tilt
+      target.targetX += (chestGameX - target.targetX) * arcBlend;
+    } else {
+      // State 3 — SHIELD: behind rear plane → green
+      ringMat.color.setHex(0x44ff88);
+      ringMat.opacity = 1.0;
+      target.targetScale = 1;
+      target.shieldMode = true;
     }
 
     // Laser: hands show only when fully extended; controllers show from first trigger pull
