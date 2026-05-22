@@ -983,7 +983,8 @@ window.addEventListener('mousemove', e => {
 // ── CPU P2 ────────────────────────────────────────────────────────────────────
 const CPU_SPEED = 1.5;
 const CPU_ERROR = 0.040;
-const DEFENSIVE_SPREAD = AW * 0.18;
+const DEFENSIVE_SPREAD = SHOULDER_X;   // match P1 shoulder offset
+const P2_MAP_HW = AW * P1_MAP_S / 2;  // half-width of P2 paddle range (same as P1 debug box)
 let cpuOff = { x: 0, y: 0 }, cpuOff2 = { x: 0, y: 0 };
 
 function resetCpuOff() {
@@ -1001,18 +1002,26 @@ function cpuMoveToward(paddle, tx, ty, dt) {
   if (d > 0.001) { const spd = CPU_SPEED * (paddle.speedMult || 1.0) * dt; paddle.x += dx / d * Math.min(d, spd); paddle.y += dy / d * Math.min(d, spd); }
 }
 
+function clampP2Paddle(paddle, centerX, shoulderOff) {
+  // Constrain P2 paddles to a tight area around the avatar, matching P1's debug box
+  paddle.x = THREE.MathUtils.clamp(paddle.x, centerX + shoulderOff - P2_MAP_HW, centerX + shoulderOff + P2_MAP_HW);
+  paddle.y = THREE.MathUtils.clamp(paddle.y, AY, PADDLE_Y_MAX);
+}
+
 function updateCpu(dt) {
   const ref = balls[0]; // placeholder until CPU gets its own shoot mechanic
   const midY = AY + AH * 0.5;
+  // Simulated head = midpoint of hands (single-hand in level 1)
+  const headX = currentLevel === 1 ? p2.x : (p2.x + p2b.x) / 2;
   if (ref.vel.z <= 0) {
-    cpuMoveToward(p2,   DEFENSIVE_SPREAD, midY, dt);
-    cpuMoveToward(p2b, -DEFENSIVE_SPREAD, midY, dt);
+    cpuMoveToward(p2,  headX + SHOULDER_X,  midY, dt);
+    cpuMoveToward(p2b, headX - SHOULDER_X,  midY, dt);
   } else {
     cpuMoveToward(p2,  ref.pos.x + cpuOff.x,  ref.pos.y + cpuOff.y,  dt);
     cpuMoveToward(p2b, ref.pos.x + cpuOff2.x, ref.pos.y + cpuOff2.y, dt);
   }
-  clampPaddle(p2); clampPaddle(p2b);
-  // Simulated head = midpoint of hands (single-hand in level 1)
+  clampP2Paddle(p2,  brickGroupX[1],  SHOULDER_X);
+  clampP2Paddle(p2b, brickGroupX[1], -SHOULDER_X);
   updateBrickGroupX(1, currentLevel === 1 ? p2.x : (p2.x + p2b.x) / 2);
 }
 
