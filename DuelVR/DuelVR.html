@@ -756,8 +756,8 @@ const balls = [
   makeBallObject(0xff3344),  // p2 right  — red glow
   makeBallObject(0xff6622),  // p2b left  — orange-red glow
 ];
-const p1  = { x: SHOULDER_X,  y: MID_Y, targetX: SHOULDER_X,  targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0, prevWz: 0, prevWx: 0, prevWy: 0, pullRate: 0, xRate: 0, yRate: 0, handWasOut: false };
-const p1b = { x: -SHOULDER_X, y: MID_Y, targetX: -SHOULDER_X, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0, prevWz: 0, prevWx: 0, prevWy: 0, pullRate: 0, xRate: 0, yRate: 0, handWasOut: false };
+const p1  = { x: SHOULDER_X,  y: MID_Y, targetX: SHOULDER_X,  targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, triggerHeld: false, wasTriggerHeld: false, brightness: 0, targetBrightness: 0, prevWz: 0, prevWx: 0, prevWy: 0, pullRate: 0, xRate: 0, yRate: 0, handWasOut: false };
+const p1b = { x: -SHOULDER_X, y: MID_Y, targetX: -SHOULDER_X, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, triggerHeld: false, wasTriggerHeld: false, brightness: 0, targetBrightness: 0, prevWz: 0, prevWx: 0, prevWy: 0, pullRate: 0, xRate: 0, yRate: 0, handWasOut: false };
 let _p1CenterX = 0;
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
 const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
@@ -786,8 +786,8 @@ function setAllPaddlesVisible(v) {
 function resetPaddles() {
   p1.x  =  SHOULDER_X; p1.targetX  =  SHOULDER_X;
   p1b.x = -SHOULDER_X; p1b.targetX = -SHOULDER_X;
-  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.wasLaserOn  = true; p1.brightness  = 0; p1.targetBrightness  = 0; p1.prevWz  = 0; p1.prevWx  = 0; p1.prevWy  = 0; p1.pullRate  = 0; p1.xRate  = 0; p1.yRate  = 0; p1.handWasOut  = false;
-  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.wasLaserOn = true; p1b.brightness = 0; p1b.targetBrightness = 0; p1b.prevWz = 0; p1b.prevWx = 0; p1b.prevWy = 0; p1b.pullRate = 0; p1b.xRate = 0; p1b.yRate = 0; p1b.handWasOut = false;
+  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.wasLaserOn  = true; p1.triggerHeld  = false; p1.wasTriggerHeld  = false; p1.brightness  = 0; p1.targetBrightness  = 0; p1.prevWz  = 0; p1.prevWx  = 0; p1.prevWy  = 0; p1.pullRate  = 0; p1.xRate  = 0; p1.yRate  = 0; p1.handWasOut  = false;
+  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.wasLaserOn = true; p1b.triggerHeld = false; p1b.wasTriggerHeld = false; p1b.brightness = 0; p1b.targetBrightness = 0; p1b.prevWz = 0; p1b.prevWx = 0; p1b.prevWy = 0; p1b.pullRate = 0; p1b.xRate = 0; p1b.yRate = 0; p1b.handWasOut = false;
   p2.deleted  = false; p2.speedMult  = 1.0;  p2.tilt  = 0; p2.targetTilt  = 0; p2.scale  = 1; p2.targetScale  = 1; p2.brightness  = 0; p2.targetBrightness  = 0;
   p2b.deleted = false; p2b.speedMult = 1.0;  p2b.tilt = 0; p2b.targetTilt = 0; p2b.scale = 1; p2b.targetScale = 1; p2b.brightness = 0; p2b.targetBrightness = 0;
   _cpuShootState2.timer  = 5.0;
@@ -1170,6 +1170,12 @@ function updateXRPaddles(frame, dt) {
     target.targetScale      = 1;
     target.targetBrightness = t;
     target.laserOn          = src.hand ? (t >= 1) : (t >= 0.95);
+    // Track trigger separately for hold-to-fly mechanic (controller uses raw trigger, hand uses laserOn)
+    if (src.hand) {
+      target.triggerHeld = target.laserOn;
+    } else {
+      target.triggerHeld = (src.gamepad?.buttons[0]?.value ?? 0) > 0.5;
+    }
 
     // Laser: hands show only when fully extended; controllers show from first trigger pull
     const laser = isRight ? laser1 : laser1b;
@@ -1555,9 +1561,15 @@ renderer.setAnimationLoop((time, frame) => {
   if (frame) {
     updateXRPaddles(frame, dt);
     if (gameState === 'playing') {
-      if (p1.laserOn  && !p1.wasLaserOn  && !p1.deleted)  shootBall(balls[0], p1,  paddle1,  p1LaserDir,  PADDLE_INSET);
-      if (p1b.laserOn && !p1b.wasLaserOn && !p1b.deleted) shootBall(balls[1], p1b, paddle1b, p1bLaserDir, PADDLE_INSET);
+      // Rising edge: shoot frisbee when trigger pressed / hand extended
+      if (p1.triggerHeld  && !p1.wasTriggerHeld  && !p1.deleted)  shootBall(balls[0], p1,  paddle1,  p1LaserDir,  PADDLE_INSET);
+      if (p1b.triggerHeld && !p1b.wasTriggerHeld && !p1b.deleted) shootBall(balls[1], p1b, paddle1b, p1bLaserDir, PADDLE_INSET);
+      // Falling edge: return frisbee when trigger released / hand retracted
+      if (!p1.triggerHeld  && p1.wasTriggerHeld  && balls[0].state === 'flying' && balls[0].shooter === p1)   balls[0].state = 'returning';
+      if (!p1b.triggerHeld && p1b.wasTriggerHeld && balls[1].state === 'flying' && balls[1].shooter === p1b)  balls[1].state = 'returning';
     }
+    p1.wasTriggerHeld  = p1.triggerHeld;
+    p1b.wasTriggerHeld = p1b.triggerHeld;
     p1.wasLaserOn  = p1.laserOn;
     p1b.wasLaserOn = p1b.laserOn;
   }
