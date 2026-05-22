@@ -479,7 +479,6 @@ p2Body[0].state = 'white'; p2Body[0].fillMat.color.setHex(0xffffff); p2Body[0].e
 let brickCounts = [BRICK_COUNT, BRICK_COUNT];
 const brickGroupX = [0, 0];
 const dyingBricks = [];
-let _debugBoxLine = null;
 
 // ── Avatar motion pose ────────────────────────────────────────────────────────
 // rotation.z applied to each brick when fully in "running" state (0=still,1=running)
@@ -544,7 +543,6 @@ function updateBrickGroupX(side, targetX) {
     const wx = brickGroupX[side] + bp.localX;
     bp.mesh.position.x = wx; bp.edges.position.x = wx;
   }
-  if (side === 0 && _debugBoxLine) _debugBoxLine.position.x = brickGroupX[0];
   updateVRBricks();
 }
 
@@ -629,23 +627,6 @@ function triggerBounceRing(x, y, z, axis) {
   if (gameState === 'playing') soundWall();
 }
 
-// ── Debug: end-wall rectangle at P1 paddle plane ─────────────────────────────
-{
-  const S = 0.25, cx = 0, hw = AW*S/2, hh = AH*S/2;
-  const headTop = BRICK_Y + 0.070 + 0.054/2;  // top of avatar head
-  const cy = headTop - hh;
-  const pts = [
-    new THREE.Vector3(cx-hw, cy-hh, PADDLE_INSET),
-    new THREE.Vector3(cx+hw, cy-hh, PADDLE_INSET),
-    new THREE.Vector3(cx+hw, cy+hh, PADDLE_INSET),
-    new THREE.Vector3(cx-hw, cy+hh, PADDLE_INSET),
-    new THREE.Vector3(cx-hw, cy-hh, PADDLE_INSET),
-  ];
-  const geo = new THREE.BufferGeometry().setFromPoints(pts);
-  const mat = new THREE.LineBasicMaterial({ color: 0x00ffff, depthTest: false });
-  _debugBoxLine = new THREE.Line(geo, mat);
-  arenaRoot.add(_debugBoxLine);
-}
 
 // ── Death debris ──────────────────────────────────────────────────────────────
 const DEBRIS_POOL = 120;
@@ -1022,20 +1003,27 @@ function clampP2Paddle(paddle, centerX, shoulderOff) {
 }
 
 function updateCpu(dt) {
-  const ref = balls[0]; // placeholder until CPU gets its own shoot mechanic
+  const ref = balls[0];
   const midY = AY + AH * 0.5;
-  // Simulated head = midpoint of hands (single-hand in level 1)
-  const headX = currentLevel === 1 ? p2.x : (p2.x + p2b.x) / 2;
+
+  // Move avatar center (head) independently toward ball or centre
+  const targetHeadX = ref.vel.z > 0 ? ref.pos.x : 0;
+  const headDx = targetHeadX - brickGroupX[1];
+  const headD  = Math.abs(headDx);
+  const headSpd = CPU_SPEED * Math.min(p2.speedMult || 1, p2b.speedMult || 1) * dt;
+  const newHeadX = brickGroupX[1] + (headD > 0.001 ? Math.sign(headDx) * Math.min(headD, headSpd) : 0);
+  updateBrickGroupX(1, newHeadX);
+
+  // Position paddles relative to avatar, then constrain
   if (ref.vel.z <= 0) {
-    cpuMoveToward(p2,  headX + SHOULDER_X,  midY, dt);
-    cpuMoveToward(p2b, headX - SHOULDER_X,  midY, dt);
+    cpuMoveToward(p2,  brickGroupX[1] + SHOULDER_X,  midY, dt);
+    cpuMoveToward(p2b, brickGroupX[1] - SHOULDER_X,  midY, dt);
   } else {
     cpuMoveToward(p2,  ref.pos.x + cpuOff.x,  ref.pos.y + cpuOff.y,  dt);
     cpuMoveToward(p2b, ref.pos.x + cpuOff2.x, ref.pos.y + cpuOff2.y, dt);
   }
   clampP2Paddle(p2,  brickGroupX[1],  SHOULDER_X);
   clampP2Paddle(p2b, brickGroupX[1], -SHOULDER_X);
-  updateBrickGroupX(1, currentLevel === 1 ? p2.x : (p2.x + p2b.x) / 2);
 }
 
 // ── CPU shooting ─────────────────────────────────────────────────────────────
