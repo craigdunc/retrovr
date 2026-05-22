@@ -160,6 +160,9 @@ const SHOOT_SPEED  = 2.4;               // m/s — matches pong3d serve speed
 const RETURN_SPEED = SHOOT_SPEED * 2;   // m/s — Thor's hammer return
 const PULL_FORCE   = 5.0;               // pull acceleration multiplier (m/s per m/s of hand speed)
 const STEER_FORCE  = 0.8;               // aftertouch swerve — m/s² per m/s of hand speed
+const P1_MAP_S     = 0.25;             // hand→paddle scale: arena walls map to debug box edges
+const P1_MAP_FLOOR = AY + 0.4;         // arena floor in XR/world Y (AY + ARENA_FULL_POS.y)
+const P1_MAP_BOT_Y = BRICK_Y + 0.097 - AH * P1_MAP_S; // paddle Y when hand at arena floor
 const ARENA_CY     = AY + AH * 0.5;
 
 // Bricks: 5 per side, at back of each player's half
@@ -474,6 +477,7 @@ p2Bricks[2].state = 'white'; p2Bricks[2].fillMat.color.setHex(0xffffff); p2Brick
 let brickCounts = [BRICK_COUNT, BRICK_COUNT];
 const brickGroupX = [0, 0];
 const dyingBricks = [];
+let _debugBoxLine = null;
 
 // ── Avatar motion pose ────────────────────────────────────────────────────────
 // rotation.z applied to each brick when fully in "running" state (0=still,1=running)
@@ -528,6 +532,7 @@ function updateBrickGroupX(side, targetX) {
     const wx = brickGroupX[side] + bp.localX;
     bp.mesh.position.x = wx; bp.edges.position.x = wx;
   }
+  if (side === 0 && _debugBoxLine) _debugBoxLine.position.x = brickGroupX[0];
   updateVRBricks();
 }
 
@@ -610,6 +615,24 @@ function triggerBounceRing(x, y, z, axis) {
   if (axis === 'y') r.group.rotation.x = Math.PI / 2;
   r.flash = 1.0;
   if (gameState === 'playing') soundWall();
+}
+
+// ── Debug: end-wall rectangle at P1 paddle plane ─────────────────────────────
+{
+  const S = 0.25, cx = 0, hw = AW*S/2, hh = AH*S/2;
+  const headTop = BRICK_Y + 0.070 + 0.054/2;  // top of avatar head
+  const cy = headTop - hh;
+  const pts = [
+    new THREE.Vector3(cx-hw, cy-hh, PADDLE_INSET),
+    new THREE.Vector3(cx+hw, cy-hh, PADDLE_INSET),
+    new THREE.Vector3(cx+hw, cy+hh, PADDLE_INSET),
+    new THREE.Vector3(cx-hw, cy+hh, PADDLE_INSET),
+    new THREE.Vector3(cx-hw, cy-hh, PADDLE_INSET),
+  ];
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineBasicMaterial({ color: 0x00ffff, depthTest: false });
+  _debugBoxLine = new THREE.Line(geo, mat);
+  arenaRoot.add(_debugBoxLine);
 }
 
 // ── Death debris ──────────────────────────────────────────────────────────────
@@ -1076,8 +1099,9 @@ function updateXRPaddles(frame, dt) {
   // Use viewer pose so headZ is in the same reference space as hand/grip poses
   const viewerPose = frame.getViewerPose(rs);
   if (!viewerPose) return;
-  const headZ = viewerPose.transform.position.z;
+  const headX = viewerPose.transform.position.x;
   const headY = viewerPose.transform.position.y;
+  const headZ = viewerPose.transform.position.z;
   let handledRight = false, handledLeft = false;
   for (const src of xrSession.inputSources) {
     const isRight = src.handedness === 'right', isLeft = src.handedness === 'left';
@@ -1137,8 +1161,8 @@ function updateXRPaddles(frame, dt) {
       (isRight ? realHand1 : realHand1b).visible = false;
       continue;
     }
-    target.targetX          = wx;
-    target.targetY          = MID_Y + (wy - (headY - 0.75));
+    target.targetX          = headX + (wx - headX) * P1_MAP_S;
+    target.targetY          = P1_MAP_BOT_Y + (wy - P1_MAP_FLOOR) * P1_MAP_S;
     const realH = isRight ? realHand1 : realHand1b;
     realH.visible = true;
     realH.position.set(wx, wy - REAL_HAND_R, wz);
