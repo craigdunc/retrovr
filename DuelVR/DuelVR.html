@@ -414,11 +414,23 @@ const paddleFlash = [0, 0, 0, 0];
 // ── Laser pointers (targetRay-based, world space, visible past front tilt plane) ─
 const _laserQ   = new THREE.Quaternion();
 const _laserDir = new THREE.Vector3();
-function makeLaserRay(color) {
+function makeLaserRay(colorHex) {
   const buf  = new Float32Array(6); // start (xyz) + end (xyz)
+  const color = new THREE.Color(colorHex);
+  const colorBuf = new Float32Array([
+    0, 0, 0, // start (fades to 0 opacity with additive blending)
+    color.r, color.g, color.b // end (bright color)
+  ]);
   const geo  = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(buf, 3));
-  const mat  = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false });
+  geo.setAttribute('color', new THREE.BufferAttribute(colorBuf, 3));
+  const mat  = new THREE.LineBasicMaterial({
+    vertexColors: true,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    opacity: 0.9,
+    depthWrite: false
+  });
   const line = new THREE.Line(geo, mat);
   line.visible = false;
   scene.add(line);
