@@ -162,7 +162,6 @@ const PULL_FORCE   = 5.0;               // pull acceleration multiplier (m/s per
 const STEER_FORCE  = 0.8;               // aftertouch swerve — m/s² per m/s of hand speed
 const P1_MAP_S     = 0.25;             // hand→paddle scale: arena walls map to debug box edges
 const P1_MAP_FLOOR = AY + 0.4;         // arena floor in XR/world Y (AY + ARENA_FULL_POS.y)
-const P1_MAP_BOT_Y = BRICK_Y + 0.097 - AH * P1_MAP_S; // paddle Y when hand at arena floor
 const ARENA_CY     = AY + AH * 0.5;
 
 // Bricks: 5 per side, at back of each player's half
@@ -181,6 +180,7 @@ const BRICK_CONFIGS = [
 ];
 const BRICK_D = 0.08;           // thick enough to prevent tunnelling at max speed
 const BRICK_Y = AY + 0.181;    // torso base sits on arena floor
+const P1_MAP_BOT_Y = BRICK_Y + 0.097 - AH * P1_MAP_S; // paddle Y when hand at arena floor
 const BRICK_Z1 = 1.2;        // P1's bricks 1.2m into arena
 const BRICK_Z2 = AD - 1.2;   // P2's bricks 1.2m into arena from far wall
 
