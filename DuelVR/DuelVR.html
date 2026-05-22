@@ -823,8 +823,14 @@ function takeDamage(sideIdx, amount = 1) {
   if (sideIdx === 0) p1Health = Math.max(0, p1Health - amount);
   else               p2Health = Math.max(0, p2Health - amount);
   updateHealthDisplay();
-  if (p1Health <= 0 || p2Health <= 0) {
-    endGame(p1Health <= 0 ? 0 : 1);
+  if ((p1Health <= 0 || p2Health <= 0) && gameState !== 'centerwin') {
+    // Trigger full death explosion sequence
+    const loserIdx = p1Health <= 0 ? 0 : 1;
+    const bricks = loserIdx === 0 ? p1Bricks : p2Bricks;
+    soundCenterBrick();
+    for (const b of balls) b.vel.set(0, 0, 0);
+    gameState = 'centerwin';
+    _centerWin = { sideIdx: loserIdx, scorer: 1 - loserIdx, brick: bricks[2], phase: 'flash', flashCount: 0, timer: 0.18, fadeTotal: 0.55 };
   }
 }
 
