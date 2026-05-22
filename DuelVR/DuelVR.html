@@ -461,7 +461,7 @@ function makeAvatarBody(brickZ, fillColor, edgeColor) {
     mesh.position.set(localX, localY, brickZ);
     edges.position.set(localX, localY, brickZ);
     arenaRoot.add(mesh, edges);
-    return { localX, mesh, edges };
+    return { localX, localY, w, h, mesh, edges, fillMat, edgeMat, state: 'normal' };
   });
 }
 
@@ -472,6 +472,9 @@ const p2Body   = makeAvatarBody(BRICK_Z2, 0xbb2233, 0xff4466);
 // Centre brick (index 2) is the life brick — starts white for both sides
 p1Bricks[2].state = 'white'; p1Bricks[2].fillMat.color.setHex(0xffffff); p1Bricks[2].edgeMat.color.setHex(0xffffff);
 p2Bricks[2].state = 'white'; p2Bricks[2].fillMat.color.setHex(0xffffff); p2Bricks[2].edgeMat.color.setHex(0xffffff);
+// Head (body index 0) also starts white — same 2-hit kill mechanic as chest
+p1Body[0].state = 'white'; p1Body[0].fillMat.color.setHex(0xffffff); p1Body[0].edgeMat.color.setHex(0xffffff);
+p2Body[0].state = 'white'; p2Body[0].fillMat.color.setHex(0xffffff); p2Body[0].edgeMat.color.setHex(0xffffff);
 
 let brickCounts = [BRICK_COUNT, BRICK_COUNT];
 const brickGroupX = [0, 0];
@@ -505,7 +508,17 @@ function resetBricks() {
   dyingBricks.length = 0;
   _centerWin = null;
   for (const br of [...p1Bricks, ...p2Bricks]) { br.fillMat.opacity = 0.18; br.edgeMat.opacity = 1; }
-  for (const bp of [...p1Body, ...p2Body]) { bp.mesh.visible = true; bp.edges.visible = true; }
+  // Reset body parts
+  for (const bp of [...p1Body, ...p2Body]) {
+    bp.mesh.visible = true; bp.edges.visible = true;
+    bp.mesh.scale.set(1, 1, 1); bp.edges.scale.set(1, 1, 1);
+  }
+  // Head starts white
+  p1Body[0].state = 'white'; p1Body[0].fillMat.color.setHex(0xffffff); p1Body[0].edgeMat.color.setHex(0xffffff); p1Body[0].fillMat.opacity = 0.18;
+  p2Body[0].state = 'white'; p2Body[0].fillMat.color.setHex(0xffffff); p2Body[0].edgeMat.color.setHex(0xffffff); p2Body[0].fillMat.opacity = 0.18;
+  // Legs start normal
+  p1Body[1].state = 'normal'; p1Body[1].fillMat.opacity = 0.18;
+  p2Body[1].state = 'normal'; p2Body[1].fillMat.opacity = 0.18;
 }
 
 function updateBrickGroupX(side, targetX) {
@@ -1374,6 +1387,7 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
     : (b.pos.z >= front && b.pos.z <= back);
   if (!inRange) return false;
 
+  // Check destructible arm/shoulder/chest bricks
   for (let i = 0; i < bricks.length; i++) {
     const brick = bricks[i];
     if (!brick.alive) continue;
@@ -1411,6 +1425,57 @@ function checkBrickHit(b, bricks, sideIdx, brickZ, velZSign) {
       return true;
     }
   }
+
+  // Check avatar body parts: head (index 0) and legs (index 1)
+  const body = sideIdx === 0 ? p1Body : p2Body;
+  for (let j = 0; j < body.length; j++) {
+    const bp = body[j];
+    if (!bp.mesh.visible) continue;
+    const bpX = bp.mesh.position.x;
+    const bpY = bp.mesh.position.y;
+    const sx  = bp.mesh.scale.x;
+    const sy  = bp.mesh.scale.y;
+    if (Math.abs(b.pos.x - bpX) < bp.w * sx / 2 + BALL_R &&
+        Math.abs(b.pos.y - bpY) < bp.h * sy / 2 + BALL_R) {
+      b.pos.z = front;
+      b.vel.z = -b.vel.z;
+      wallFlash[sideIdx] = 1.0;
+      triggerBounceRing(bpX, bpY, brickZ, 'z');
+
+      if (j === 0) {
+        // HEAD — same 2-hit kill mechanic as chest brick
+        if (bp.state === 'white') {
+          bp.fillMat.color.setHex(sideIdx === 0 ? 0x2255bb : 0xbb2233);
+          bp.edgeMat.color.setHex(sideIdx === 0 ? 0x44aaff : 0xff4466);
+          bp.state = 'damaged';
+          soundBrick();
+        } else {
+          // Second hit on head — game over
+          soundCenterBrick();
+          for (const ball of balls) ball.vel.set(0, 0, 0);
+          gameState = 'centerwin';
+          _centerWin = { sideIdx, scorer: 1 - sideIdx, brick: bp, phase: 'flash', flashCount: 0, timer: 0.18, fadeTotal: 0.55 };
+        }
+      } else if (j === 1) {
+        // LEGS — shrink and slow movement (doesn't disappear)
+        const shrink = 0.6;
+        bp.mesh.scale.set(shrink, shrink, shrink);
+        bp.edges.scale.set(shrink, shrink, shrink);
+        bp.state = 'hit';
+        soundBrick();
+        // Slow down movement
+        if (sideIdx === 0) {
+          p1.lerpSpeed = PADDLE_LERP_SLOW;
+          p1b.lerpSpeed = PADDLE_LERP_SLOW;
+        } else {
+          p2.speedMult = 0.4;
+          p2b.speedMult = 0.4;
+        }
+      }
+      return true;
+    }
+  }
+
   return false;
 }
 
