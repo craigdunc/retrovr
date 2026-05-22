@@ -138,6 +138,7 @@ const BALL_R       = 0.025;
 const PADDLE_R     = 0.022;
 const COIN_R       = 0.010;   // tiny coin-puck radius when hand is past front plane
 const PADDLE_INSET = 1.28; // just in front of avatar (BRICK_Z1=1.2)
+const SHOULDER_X   = 0.087; // lateral offset from avatar centre to each paddle (outer arm brick)
 const TILT_Z_BACK  = 0.20;              // hand depth ahead of head (m) = full vertical paddle
 const TILT_Z_FRONT = 0.24;              // hand depth ahead of head (m) = full horizontal coin + laser
 const P1_SENS      = 1.8;
@@ -705,8 +706,9 @@ const balls = [
   makeBallObject(0xff3344),  // p2 right  — red glow
   makeBallObject(0xff6622),  // p2b left  — orange-red glow
 ];
-const p1  = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
-const p1b = { x: 0, y: MID_Y, targetX: 0, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
+const p1  = { x: SHOULDER_X,  y: MID_Y, targetX: SHOULDER_X,  targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
+const p1b = { x: -SHOULDER_X, y: MID_Y, targetX: -SHOULDER_X, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
+let _p1CenterX = 0;
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
 const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
 let serving = true, servePhase = 'drop', serveTimer = 0;
@@ -732,6 +734,8 @@ function setAllPaddlesVisible(v) {
 }
 
 function resetPaddles() {
+  p1.x  =  SHOULDER_X; p1.targetX  =  SHOULDER_X;
+  p1b.x = -SHOULDER_X; p1b.targetX = -SHOULDER_X;
   p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.wasLaserOn  = true; p1.brightness  = 0; p1.targetBrightness  = 0;
   p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.wasLaserOn = true; p1b.brightness = 0; p1b.targetBrightness = 0;
   p2.deleted  = false; p2.speedMult  = 1.0;  p2.tilt  = 0; p2.targetTilt  = 0; p2.scale  = 1; p2.targetScale  = 1; p2.brightness  = 0; p2.targetBrightness  = 0;
@@ -907,9 +911,12 @@ window.addEventListener('mousemove', e => {
   raycaster.setFromCamera(mouse2, camera);
   const hit = new THREE.Vector3();
   if (raycaster.ray.intersectPlane(p1Plane, hit)) {
-    p1.targetX = hit.x * P1_SENS;
-    p1.targetY = ARENA_CY + (hit.y - ARENA_CY) * P1_SENS;
-    p1b.targetX = p1.targetX; p1b.targetY = p1.targetY;
+    _p1CenterX  = hit.x * P1_SENS;
+    const hitY  = ARENA_CY + (hit.y - ARENA_CY) * P1_SENS;
+    p1.targetX  = _p1CenterX + SHOULDER_X;
+    p1b.targetX = _p1CenterX - SHOULDER_X;
+    p1.targetY  = hitY;
+    p1b.targetY = hitY;
   }
 });
 
@@ -1062,7 +1069,7 @@ function updateXRPaddles(frame) {
       t = Math.max(tDepth, tTrigger);
     }
     const target = isRight ? p1 : p1b;
-    target.targetX          = wx * P1_VR_SENS;
+    target.targetX          = wx;
     target.targetY          = wy - ARENA_FULL_POS.y;
     const realH = isRight ? realHand1 : realHand1b;
     realH.visible = true;
@@ -1478,7 +1485,7 @@ renderer.setAnimationLoop((time, frame) => {
   updateDebris(dt);
 
   // P1 brick group tracks human head
-  const headX = renderer.xr.isPresenting ? renderer.xr.getCamera().position.x : camera.position.x;
+  const headX = renderer.xr.isPresenting ? renderer.xr.getCamera().position.x : _p1CenterX;
   updateBrickGroupX(0, headX);
   updateAvatarPose(dt);
 
