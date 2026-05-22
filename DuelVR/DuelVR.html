@@ -159,7 +159,7 @@ const REAL_HAND_R  = 0.10;  // real-world hand ring radius (~palm size)
 const SHOOT_SPEED  = 2.4;               // m/s — matches pong3d serve speed
 const RETURN_SPEED = SHOOT_SPEED * 2;   // m/s — Thor's hammer return
 const PULL_FORCE   = 5.0;               // pull acceleration multiplier (m/s per m/s of hand speed)
-const STEER_FORCE  = 1.8;               // lateral/vertical steering influence on flying disc
+const STEER_FORCE  = 0.8;               // aftertouch swerve — m/s² per m/s of hand speed
 const ARENA_CY     = AY + AH * 0.5;
 
 // Bricks: 5 per side, at back of each player's half
@@ -1443,8 +1443,8 @@ function updateBall(dt) {
       // Hand influence on flying P1 discs: guided pull + lateral steering
       if (b.shooter === p1 || b.shooter === p1b) {
         const sh = b.shooter;
-        b.vel.x += sh.xRate * STEER_FORCE;
-        b.vel.y += sh.yRate * STEER_FORCE;
+        b.vel.x += sh.xRate * STEER_FORCE * dt;
+        b.vel.y += sh.yRate * STEER_FORCE * dt;
         if (sh.pullRate > 0) {
           const gdx = sh.x - b.pos.x, gdy = sh.y - b.pos.y, gdz = b.shooterZ - b.pos.z;
           const gd = Math.sqrt(gdx*gdx + gdy*gdy + gdz*gdz);
