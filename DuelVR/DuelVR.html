@@ -351,7 +351,7 @@ function makeBallObject(glowColor = 0xffffff) {
   let tHead = 0;
   return {
     pos: new THREE.Vector3(), vel: new THREE.Vector3(),
-    state: 'idle', shooter: null, shooterPaddle: null, shooterZ: PADDLE_INSET, flyTime: 0,
+    state: 'idle', shooter: null, shooterPaddle: null, shooterZ: PADDLE_INSET, flyTime: 0, blastTimer: 0,
     mesh,
     setFade(v) {
       ballMat.transparent = v < 1; ballMat.opacity = v;
@@ -769,8 +769,8 @@ const balls = [
   makeBallObject(0xff3344),  // p2 right  — red glow
   makeBallObject(0xff6622),  // p2b left  — orange-red glow
 ];
-const p1  = { x: SHOULDER_X,  y: MID_Y, targetX: SHOULDER_X,  targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, triggerHeld: false, wasTriggerHeld: false, brightness: 0, targetBrightness: 0, prevWz: 0, prevWx: 0, prevWy: 0, pullRate: 0, xRate: 0, yRate: 0, handWasOut: false };
-const p1b = { x: -SHOULDER_X, y: MID_Y, targetX: -SHOULDER_X, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, triggerHeld: false, wasTriggerHeld: false, brightness: 0, targetBrightness: 0, prevWz: 0, prevWx: 0, prevWy: 0, pullRate: 0, xRate: 0, yRate: 0, handWasOut: false };
+const p1  = { x: SHOULDER_X,  y: MID_Y, targetX: SHOULDER_X,  targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, triggerHeld: false, wasTriggerHeld: false, shieldMode: false, brightness: 0, targetBrightness: 0, prevWz: 0, prevWx: 0, prevWy: 0, pullRate: 0, xRate: 0, yRate: 0, handWasOut: false };
+const p1b = { x: -SHOULDER_X, y: MID_Y, targetX: -SHOULDER_X, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, triggerHeld: false, wasTriggerHeld: false, shieldMode: false, brightness: 0, targetBrightness: 0, prevWz: 0, prevWx: 0, prevWy: 0, pullRate: 0, xRate: 0, yRate: 0, handWasOut: false };
 let _p1CenterX = 0;
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
 const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
@@ -799,8 +799,8 @@ function setAllPaddlesVisible(v) {
 function resetPaddles() {
   p1.x  =  SHOULDER_X; p1.targetX  =  SHOULDER_X;
   p1b.x = -SHOULDER_X; p1b.targetX = -SHOULDER_X;
-  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.wasLaserOn  = true; p1.triggerHeld  = false; p1.wasTriggerHeld  = false; p1.brightness  = 0; p1.targetBrightness  = 0; p1.prevWz  = 0; p1.prevWx  = 0; p1.prevWy  = 0; p1.pullRate  = 0; p1.xRate  = 0; p1.yRate  = 0; p1.handWasOut  = false;
-  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.wasLaserOn = true; p1b.triggerHeld = false; p1b.wasTriggerHeld = false; p1b.brightness = 0; p1b.targetBrightness = 0; p1b.prevWz = 0; p1b.prevWx = 0; p1b.prevWy = 0; p1b.pullRate = 0; p1b.xRate = 0; p1b.yRate = 0; p1b.handWasOut = false;
+  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.wasLaserOn  = true; p1.triggerHeld  = false; p1.wasTriggerHeld  = false; p1.shieldMode  = false; p1.brightness  = 0; p1.targetBrightness  = 0; p1.prevWz  = 0; p1.prevWx  = 0; p1.prevWy  = 0; p1.pullRate  = 0; p1.xRate  = 0; p1.yRate  = 0; p1.handWasOut  = false;
+  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.wasLaserOn = true; p1b.triggerHeld = false; p1b.wasTriggerHeld = false; p1b.shieldMode = false; p1b.brightness = 0; p1b.targetBrightness = 0; p1b.prevWz = 0; p1b.prevWx = 0; p1b.prevWy = 0; p1b.pullRate = 0; p1b.xRate = 0; p1b.yRate = 0; p1b.handWasOut = false;
   p2.deleted  = false; p2.speedMult  = 1.0;  p2.tilt  = 0; p2.targetTilt  = 0; p2.scale  = 1; p2.targetScale  = 1; p2.brightness  = 0; p2.targetBrightness  = 0;
   p2b.deleted = false; p2b.speedMult = 1.0;  p2b.tilt = 0; p2b.targetTilt = 0; p2b.scale = 1; p2b.targetScale = 1; p2b.brightness = 0; p2b.targetBrightness = 0;
   _cpuShootState2.timer  = 5.0;
@@ -1225,16 +1225,19 @@ function updateXRPaddles(frame, dt) {
         ringMat.color.setHex(0xffffff);
         ringMat.opacity = 1.0;
         target.targetScale = 1;
+        target.shieldMode = false;
       } else if (rawT >= 0) {
         // State 2 — TILT: between front and rear planes → player colour
         ringMat.color.setHex(baseColor);
         ringMat.opacity = 0.8;
         target.targetScale = 1;
+        target.shieldMode = false;
       } else {
-        // State 3 — SHIELD: behind rear plane → green, paddle grows
+        // State 3 — SHIELD: behind rear plane → green
         ringMat.color.setHex(0x44ff88);
         ringMat.opacity = 1.0;
-        target.targetScale = 2.0;
+        target.targetScale = 1;
+        target.shieldMode = true;
       }
     }
 
@@ -1588,8 +1591,10 @@ function updateBall(dt) {
 
     if (b.state === 'flying') {
       b.flyTime += dt;
-      // CPU auto-recall after timeout
-      if (b.flyTime > 4.5 && (b.shooter === p2 || b.shooter === p2b)) { b.state = 'returning'; continue; }
+      // Blast timer countdown (shield deflect lockout)
+      if (b.blastTimer > 0) b.blastTimer -= dt;
+      // CPU auto-recall after timeout (blocked while blasted)
+      if (b.flyTime > 4.5 && b.blastTimer <= 0 && (b.shooter === p2 || b.shooter === p2b)) { b.state = 'returning'; continue; }
       // Hand influence on flying P1 discs: lateral steering (aftertouch)
       if (b.shooter === p1 || b.shooter === p1b) {
         const sh = b.shooter;
@@ -1601,8 +1606,34 @@ function updateBall(dt) {
         const r0 = PADDLE_R * p1.scale + BALL_R, r1 = PADDLE_R * p1b.scale + BALL_R;
         const dx0 = b.pos.x-p1.x,  dy0 = b.pos.y-p1.y;
         const dx1 = b.pos.x-p1b.x, dy1 = b.pos.y-p1b.y;
-        if (!p1.deleted  && paddle1.visible  && dx0*dx0+dy0*dy0 < r0*r0) { b.pos.z=PADDLE_INSET+BALL_R; deflectBall(b,p1.x, p1.y, 1,0); if (b.shooter===p2||b.shooter===p2b) b.state='returning'; triggerBounceRing(p1.x, p1.y, PADDLE_INSET,'z'); continue; }
-        if (!p1b.deleted && paddle1b.visible && dx1*dx1+dy1*dy1 < r1*r1) { b.pos.z=PADDLE_INSET+BALL_R; deflectBall(b,p1b.x,p1b.y,1,1); if (b.shooter===p2||b.shooter===p2b) b.state='returning'; triggerBounceRing(p1b.x,p1b.y,PADDLE_INSET,'z'); continue; }
+        if (!p1.deleted  && paddle1.visible  && dx0*dx0+dy0*dy0 < r0*r0) {
+          b.pos.z=PADDLE_INSET+BALL_R;
+          if (p1.shieldMode && (b.shooter===p2||b.shooter===p2b)) {
+            // SHIELD BLAST — fling enemy disc away at high speed
+            deflectBall(b, p1.x, p1.y, 1, 0);
+            const spd = b.vel.length(); b.vel.normalize().multiplyScalar(Math.max(spd, 6.0));
+            b.blastTimer = 1.0;  // 1 second before CPU can recall
+            soundBoom();
+          } else {
+            deflectBall(b,p1.x, p1.y, 1,0);
+            if (b.shooter===p2||b.shooter===p2b) b.state='returning';
+          }
+          triggerBounceRing(p1.x, p1.y, PADDLE_INSET,'z'); continue;
+        }
+        if (!p1b.deleted && paddle1b.visible && dx1*dx1+dy1*dy1 < r1*r1) {
+          b.pos.z=PADDLE_INSET+BALL_R;
+          if (p1b.shieldMode && (b.shooter===p2||b.shooter===p2b)) {
+            // SHIELD BLAST — fling enemy disc away at high speed
+            deflectBall(b, p1b.x, p1b.y, 1, 1);
+            const spd = b.vel.length(); b.vel.normalize().multiplyScalar(Math.max(spd, 6.0));
+            b.blastTimer = 1.0;
+            soundBoom();
+          } else {
+            deflectBall(b,p1b.x,p1b.y,1,1);
+            if (b.shooter===p2||b.shooter===p2b) b.state='returning';
+          }
+          triggerBounceRing(p1b.x,p1b.y,PADDLE_INSET,'z'); continue;
+        }
       }
       // Bricks first — they're flush with the end walls, same z threshold as wall bounce
       if (b.vel.z > 0 && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { continue; }
