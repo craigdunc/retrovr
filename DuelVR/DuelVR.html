@@ -487,6 +487,7 @@ function resetBricks() {
   dyingBricks.length = 0;
   _centerWin = null;
   for (const br of [...p1Bricks, ...p2Bricks]) { br.fillMat.opacity = 0.18; br.edgeMat.opacity = 1; }
+  for (const bp of [...p1Body, ...p2Body]) { bp.mesh.visible = true; bp.edges.visible = true; }
 }
 
 function updateBrickGroupX(side, targetX) {
@@ -594,6 +595,97 @@ function triggerBounceRing(x, y, z, axis) {
   if (axis === 'y') r.group.rotation.x = Math.PI / 2;
   r.flash = 1.0;
   if (gameState === 'playing') soundWall();
+}
+
+// ── Death debris ──────────────────────────────────────────────────────────────
+const DEBRIS_POOL = 120;
+const _debrisParticles = [];
+{
+  for (let i = 0; i < DEBRIS_POOL; i++) {
+    const s = 0.008 + Math.random() * 0.010;
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0xffffff, transparent: true, opacity: 0, depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(s, s * (0.5 + Math.random() * 1.0), s), mat
+    );
+    mesh.visible = false;
+    scene.add(mesh);
+    _debrisParticles.push({ mesh, mat,
+      vel: new THREE.Vector3(), rotVel: new THREE.Vector3(),
+      life: 0, maxLife: 1, riseDelay: 0.3 });
+  }
+}
+let _debrisHead = 0;
+
+function _spawnDebrisAt(wx, wy, wz, color, cxw, cyw, czw, count) {
+  for (let k = 0; k < count; k++) {
+    const d = _debrisParticles[_debrisHead++ % DEBRIS_POOL];
+    d.mesh.position.set(
+      wx + (Math.random() - 0.5) * 0.04,
+      wy + (Math.random() - 0.5) * 0.04,
+      wz + (Math.random() - 0.5) * 0.04
+    );
+    const dx = wx - cxw, dy = wy - cyw, dz = wz - czw;
+    const len = Math.sqrt(dx*dx + dy*dy + dz*dz) + 0.001;
+    const spd = 1.0 + Math.random() * 1.8;
+    d.vel.set(
+      (dx/len + (Math.random()-0.5)*0.7) * spd,
+      (dy/len + Math.random()*0.3)       * spd,
+      (dz/len + (Math.random()-0.5)*0.7) * spd
+    );
+    d.rotVel.set(
+      (Math.random()-0.5)*12, (Math.random()-0.5)*12, (Math.random()-0.5)*12
+    );
+    d.mat.color.setHex(color);
+    d.mat.opacity = 1.0;
+    d.mesh.visible = true;
+    d.life = 0;
+    d.maxLife = 1.4 + Math.random() * 0.8;
+    d.riseDelay = 0.2 + Math.random() * 0.35;
+  }
+}
+
+function spawnDeathDebris(sideIdx, centreBrick) {
+  const bricks = sideIdx === 0 ? p1Bricks : p2Bricks;
+  const body   = sideIdx === 0 ? p1Body   : p2Body;
+  const color  = sideIdx === 0 ? 0x44aaff : 0xff4466;
+  const wp = new THREE.Vector3(), ctrWP = new THREE.Vector3();
+  body[0].mesh.getWorldPosition(ctrWP);
+  const cxw = ctrWP.x, cyw = ctrWP.y, czw = ctrWP.z;
+  centreBrick.mesh.getWorldPosition(wp);
+  _spawnDebrisAt(wp.x, wp.y, wp.z, color, cxw, cyw, czw, 14);
+  for (const br of bricks) {
+    if (!br.alive) continue;
+    br.mesh.getWorldPosition(wp);
+    _spawnDebrisAt(wp.x, wp.y, wp.z, color, cxw, cyw, czw, 8);
+  }
+  for (const bp of body) {
+    bp.mesh.getWorldPosition(wp);
+    _spawnDebrisAt(wp.x, wp.y, wp.z, color, cxw, cyw, czw, 8);
+  }
+}
+
+function updateDebris(dt) {
+  for (const d of _debrisParticles) {
+    if (!d.mesh.visible) continue;
+    d.life += dt;
+    if (d.life >= d.maxLife) { d.mesh.visible = false; d.mat.opacity = 0; continue; }
+    if (d.life < d.riseDelay) {
+      d.vel.multiplyScalar(1 - dt * 2.0);
+      d.mesh.position.addScaledVector(d.vel, dt);
+    } else {
+      d.vel.x *= (1 - dt * 5); d.vel.z *= (1 - dt * 5);
+      d.vel.y += dt * 1.8;
+      d.mesh.position.addScaledVector(d.vel, dt);
+      const rT = (d.life - d.riseDelay) / (d.maxLife - d.riseDelay);
+      d.mat.opacity = Math.max(0, 1.0 - rT);
+    }
+    d.mesh.rotation.x += d.rotVel.x * dt;
+    d.mesh.rotation.y += d.rotVel.y * dt;
+    d.mesh.rotation.z += d.rotVel.z * dt;
+  }
 }
 
 // ── Game state ────────────────────────────────────────────────────────────────
@@ -1064,19 +1156,19 @@ function updateCenterWin(dt) {
       cw.timer = 0.18;
       if (cw.flashCount >= 8) {
         cw.brick.mesh.visible = false; cw.brick.edges.visible = false;
-        cw.phase = 'fade'; cw.fadeTotal = 0.55; cw.timer = 0.55;
+        const bricks = cw.sideIdx === 0 ? p1Bricks : p2Bricks;
+        const body   = cw.sideIdx === 0 ? p1Body   : p2Body;
+        for (let i = 0; i < BRICK_COUNT; i++) {
+          bricks[i].mesh.visible = false; bricks[i].edges.visible = false; bricks[i].alive = false;
+        }
+        for (const bp of body) { bp.mesh.visible = false; bp.edges.visible = false; }
+        spawnDeathDebris(cw.sideIdx, cw.brick);
+        soundBoom();
+        cw.phase = 'explode'; cw.timer = 2.2;
       }
     }
-  } else if (cw.phase === 'fade') {
-    const bricks = cw.sideIdx === 0 ? p1Bricks : p2Bricks;
-    const t = Math.max(0, cw.timer) / cw.fadeTotal;  // 1→0
-    for (let i = 0; i < BRICK_COUNT; i++) {
-      if (i !== 2) { bricks[i].fillMat.opacity = 0.18 * t; bricks[i].edgeMat.opacity = t; }
-    }
+  } else if (cw.phase === 'explode') {
     if (cw.timer <= 0) {
-      for (let i = 0; i < BRICK_COUNT; i++) {
-        if (i !== 2) { bricks[i].mesh.visible = false; bricks[i].edges.visible = false; bricks[i].alive = false; }
-      }
       const scorer = cw.scorer;
       _centerWin = null;
       gameState = 'playing';   // restore so scorePoint → endGame works
@@ -1383,6 +1475,7 @@ renderer.setAnimationLoop((time, frame) => {
   updateBall(dt);
   updateDyingBricks(dt);
   updateCenterWin(dt);
+  updateDebris(dt);
 
   // P1 brick group tracks human head
   const headX = renderer.xr.isPresenting ? renderer.xr.getCamera().position.x : camera.position.x;
