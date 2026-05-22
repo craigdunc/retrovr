@@ -180,13 +180,13 @@ const BRICK_W = (AW / 2) / BRICK_COUNT;  // kept for legacy bounds use
 const BRICK_H = 0.12;
 const BRICK_SCALE = 0.60;
 // Per-brick [w, h] — avatar arm-spread pose (idx 0=outer-left … 4=outer-right)
-// dy = Y offset from BRICK_Y (outer bricks hang below arm line, tops aligned)
+// dy = Y offset from BRICK_Y (outer bricks hang below arm line, tops slightly lower than shoulder)
 const BRICK_CONFIGS = [
-  { w: 0.032, h: 0.083, dy: -0.014 },  // outer (arm — hangs below)
+  { w: 0.032, h: 0.083, dy: -0.025 },  // outer (arm — top is slightly lower than shoulder)
   { w: 0.032, h: 0.054, dy:  0     },  // inner (shoulder)
   { w: 0.078, h: 0.054, dy:  0     },  // centre (chest / life brick)
   { w: 0.032, h: 0.054, dy:  0     },  // inner (shoulder)
-  { w: 0.032, h: 0.083, dy: -0.014 },  // outer (arm — hangs below)
+  { w: 0.032, h: 0.083, dy: -0.025 },  // outer (arm — top is slightly lower than shoulder)
 ];
 const BRICK_D = 0.08;           // thick enough to prevent tunnelling at max speed
 const BRICK_Y = AY + 0.181;    // torso base sits on arena floor
