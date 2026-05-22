@@ -1640,9 +1640,11 @@ function updateBall(dt) {
           triggerBounceRing(p1b.x,p1b.y,PADDLE_INSET,'z'); continue;
         }
       }
-      // Bricks first — they're flush with the end walls, same z threshold as wall bounce
-      if (b.vel.z > 0 && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { continue; }
-      if (b.vel.z < 0 && checkBrickHit(b,p1Bricks,0,BRICK_Z1,-1)) { continue; }
+      // Bricks — only enemy discs can damage (prevent self-hits)
+      const isP1Disc = (b.shooter === p1 || b.shooter === p1b);
+      const isP2Disc = (b.shooter === p2 || b.shooter === p2b);
+      if (b.vel.z > 0 && isP1Disc && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { continue; }
+      if (b.vel.z < 0 && isP2Disc && checkBrickHit(b,p1Bricks,0,BRICK_Z1,-1)) { continue; }
       // End walls bounce like Pong — no scoring on wall contact
       if (b.vel.z > 0 && b.pos.z > AD-BALL_R) {
         b.pos.z=AD-BALL_R; b.vel.z=-Math.abs(b.vel.z); triggerBounceRing(b.pos.x,b.pos.y,AD,'z');
