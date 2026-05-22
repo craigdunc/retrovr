@@ -146,6 +146,7 @@ const P1_VR_SENS   = 0.25;  // VR game frisbee sensitivity
 const REAL_HAND_R  = 0.10;  // real-world hand ring radius (~palm size)
 const SHOOT_SPEED  = 2.4;               // m/s — matches pong3d serve speed
 const RETURN_SPEED = SHOOT_SPEED * 2;   // m/s — Thor's hammer return
+const PULL_FORCE   = 5.0;               // pull acceleration multiplier (m/s per m/s of hand speed)
 const ARENA_CY     = AY + AH * 0.5;
 
 // Bricks: 5 per side, at back of each player's half
@@ -324,7 +325,7 @@ function makeBallObject(glowColor = 0xffffff) {
   let tHead = 0;
   return {
     pos: new THREE.Vector3(), vel: new THREE.Vector3(),
-    state: 'idle', shooter: null, shooterPaddle: null, shooterZ: PADDLE_INSET,
+    state: 'idle', shooter: null, shooterPaddle: null, shooterZ: PADDLE_INSET, flyTime: 0,
     mesh,
     setFade(v) {
       ballMat.transparent = v < 1; ballMat.opacity = v;
@@ -706,8 +707,8 @@ const balls = [
   makeBallObject(0xff3344),  // p2 right  — red glow
   makeBallObject(0xff6622),  // p2b left  — orange-red glow
 ];
-const p1  = { x: SHOULDER_X,  y: MID_Y, targetX: SHOULDER_X,  targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
-const p1b = { x: -SHOULDER_X, y: MID_Y, targetX: -SHOULDER_X, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0 };
+const p1  = { x: SHOULDER_X,  y: MID_Y, targetX: SHOULDER_X,  targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0, prevWz: 0, pullRate: 0, handWasOut: false };
+const p1b = { x: -SHOULDER_X, y: MID_Y, targetX: -SHOULDER_X, targetY: MID_Y, lerpSpeed: PADDLE_LERP_FAST, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, laserOn: false, wasLaserOn: false, brightness: 0, targetBrightness: 0, prevWz: 0, pullRate: 0, handWasOut: false };
 let _p1CenterX = 0;
 const p2  = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
 const p2b = { x: 0, y: MID_Y, speedMult: 1.0, deleted: false, tilt: 0, targetTilt: 0, scale: 1, targetScale: 1, brightness: 0, targetBrightness: 0 };
@@ -736,8 +737,8 @@ function setAllPaddlesVisible(v) {
 function resetPaddles() {
   p1.x  =  SHOULDER_X; p1.targetX  =  SHOULDER_X;
   p1b.x = -SHOULDER_X; p1b.targetX = -SHOULDER_X;
-  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.wasLaserOn  = true; p1.brightness  = 0; p1.targetBrightness  = 0;
-  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.wasLaserOn = true; p1b.brightness = 0; p1b.targetBrightness = 0;
+  p1.deleted  = false; p1.lerpSpeed  = PADDLE_LERP_FAST; p1.tilt  = 0; p1.targetTilt  = 0; p1.scale  = 1; p1.targetScale  = 1; p1.laserOn  = false; p1.wasLaserOn  = true; p1.brightness  = 0; p1.targetBrightness  = 0; p1.prevWz  = 0; p1.pullRate  = 0; p1.handWasOut  = false;
+  p1b.deleted = false; p1b.lerpSpeed = PADDLE_LERP_FAST; p1b.tilt = 0; p1b.targetTilt = 0; p1b.scale = 1; p1b.targetScale = 1; p1b.laserOn = false; p1b.wasLaserOn = true; p1b.brightness = 0; p1b.targetBrightness = 0; p1b.prevWz = 0; p1b.pullRate = 0; p1b.handWasOut = false;
   p2.deleted  = false; p2.speedMult  = 1.0;  p2.tilt  = 0; p2.targetTilt  = 0; p2.scale  = 1; p2.targetScale  = 1; p2.brightness  = 0; p2.targetBrightness  = 0;
   p2b.deleted = false; p2b.speedMult = 1.0;  p2b.tilt = 0; p2b.targetTilt = 0; p2b.scale = 1; p2b.targetScale = 1; p2b.brightness = 0; p2b.targetBrightness = 0;
   _cpuShootState2.timer  = 5.0;
@@ -885,9 +886,17 @@ window.addEventListener('keydown', () => {
   if (audioCtx.state === 'suspended') audioCtx.resume();
   if ((gameState === 'attract' || gameState === 'gameover') && camAnimTime < 0) startGame();
 });
+window.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('pointerdown', e => {
   if (audioCtx.state === 'suspended') audioCtx.resume();
-  if (renderer.xr.isPresenting || e.button !== 0) return;
+  if (renderer.xr.isPresenting) return;
+  if (e.button === 2 && gameState === 'playing') {
+    for (let i = 0; i < 2; i++) {
+      const b = balls[i]; if (b.state === 'flying') { b.state = 'returning'; break; }
+    }
+    return;
+  }
+  if (e.button !== 0) return;
   if ((gameState === 'attract' || gameState === 'gameover') && camAnimTime < 0) {
     startGame(); return;
   }
@@ -1031,7 +1040,7 @@ const grip1 = renderer.xr.getControllerGrip(0);
 const grip2 = renderer.xr.getControllerGrip(1);
 scene.add(grip1, grip2);
 
-function updateXRPaddles(frame) {
+function updateXRPaddles(frame, dt) {
   if (!xrSession || !frame) return;
   const rs = renderer.xr.getReferenceSpace();
   if (!rs) return;
@@ -1039,6 +1048,7 @@ function updateXRPaddles(frame) {
   const viewerPose = frame.getViewerPose(rs);
   if (!viewerPose) return;
   const headZ = viewerPose.transform.position.z;
+  const headY = viewerPose.transform.position.y;
   let handledRight = false, handledLeft = false;
   for (const src of xrSession.inputSources) {
     const isRight = src.handedness === 'right', isLeft = src.handedness === 'left';
@@ -1057,20 +1067,41 @@ function updateXRPaddles(frame) {
       if (pose) { wx = pose.transform.position.x; wy = pose.transform.position.y; wz = pose.transform.position.z; }
     }
     if (wx === undefined) continue;
-    let t;
+    const target = isRight ? p1 : p1b;
+
+    // Pull-rate: positive when hand moves back toward player
+    if (dt > 0) target.pullRate = Math.max(0, (target.prevWz - wz) / dt);
+    target.prevWz = wz;
+
+    let t, rawT;
     if (src.hand) {
       const depth = wz - headZ;
-      t = THREE.MathUtils.clamp((depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK), 0, 1);
+      rawT = (depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK);
+      t = THREE.MathUtils.clamp(rawT, 0, 1);
       if (isRight) handledRight = true; else handledLeft = true;
     } else {
       const depth = wz - headZ;
       const tDepth   = THREE.MathUtils.clamp((depth - TILT_Z_BACK) / (TILT_Z_FRONT - TILT_Z_BACK), 0, 1);
       const tTrigger = src.gamepad?.buttons[0]?.value ?? 0;
       t = Math.max(tDepth, tTrigger);
+      rawT = t; // controllers: no depth-snap, trigger handles it
     }
-    const target = isRight ? p1 : p1b;
+
+    // Snap disc to hand when wrist crosses back behind the back plane
+    if (t > 0.2) target.handWasOut = true;
+    if (rawT < 0 && target.handWasOut) {
+      target.handWasOut = false;
+      const ballIdx = target === p1 ? 0 : 1;
+      const bd = balls[ballIdx];
+      if (bd.state === 'flying' && bd.shooter === target) {
+        bd.state = 'idle'; bd.mesh.visible = false; bd.clearTrail();
+        if (bd.shooterPaddle) { bd.shooterPaddle.visible = true; bd.shooterPaddle = null; }
+        soundPaddle();
+      }
+    }
+
     target.targetX          = wx;
-    target.targetY          = wy - ARENA_FULL_POS.y;
+    target.targetY          = MID_Y + (wy - (headY - 0.75));
     const realH = isRight ? realHand1 : realHand1b;
     realH.visible = true;
     realH.position.set(wx, wy - REAL_HAND_R, wz);
@@ -1110,6 +1141,7 @@ function shootBall(b, shooter, paddleGroup, dir, shooterZ) {
   b.vel.copy(dir).multiplyScalar(SHOOT_SPEED);
   b.clearTrail();
   b.state         = 'flying';
+  b.flyTime       = 0;
   b.shooter       = shooter;
   b.shooterPaddle = paddleGroup;
   b.shooterZ      = shooterZ;
@@ -1336,7 +1368,8 @@ function updateBall(dt) {
       if (a.state !== 'flying' || b.state !== 'flying') continue;
       const dx = a.pos.x - b.pos.x, dy = a.pos.y - b.pos.y, dz = a.pos.z - b.pos.z;
       if (dx*dx + dy*dy + dz*dz < (BALL_R * 2.2) * (BALL_R * 2.2)) {
-        a.state = 'returning'; b.state = 'returning';
+        const tmpZ = a.vel.z; a.vel.z = b.vel.z; b.vel.z = tmpZ;
+        a.pos.z -= BALL_R * 3; b.pos.z += BALL_R * 3;
         const mx = (a.pos.x + b.pos.x) * 0.5, my = (a.pos.y + b.pos.y) * 0.5, mz = (a.pos.z + b.pos.z) * 0.5;
         triggerBounceRing(mx, my, mz, 'z');
         soundBrick();
@@ -1367,6 +1400,12 @@ function updateBall(dt) {
     else if (b.pos.y > AY+AH-BALL_R) { b.pos.y=AY+AH-BALL_R; b.vel.y=-Math.abs(b.vel.y); triggerBounceRing(b.pos.x,AY+AH,b.pos.z,'y'); }
 
     if (b.state === 'flying') {
+      b.flyTime += dt;
+      // CPU auto-recall after timeout
+      if (b.flyTime > 4.5 && (b.shooter === p2 || b.shooter === p2b)) { b.state = 'returning'; continue; }
+      // Hand pull force for P1 balls — pulling hand back attracts disc toward player
+      if (b.shooter === p1  && p1.pullRate  > 0) b.vel.z -= p1.pullRate  * PULL_FORCE;
+      if (b.shooter === p1b && p1b.pullRate > 0) b.vel.z -= p1b.pullRate * PULL_FORCE;
       // P1 paddles deflect incoming balls
       if (b.vel.z < 0 && b.pos.z < PADDLE_INSET + BALL_R) {
         const r0 = PADDLE_R * p1.scale + BALL_R, r1 = PADDLE_R * p1b.scale + BALL_R;
@@ -1376,17 +1415,14 @@ function updateBall(dt) {
         if (!p1b.deleted && paddle1b.visible && dx1*dx1+dy1*dy1 < r1*r1) { b.pos.z=PADDLE_INSET+BALL_R; deflectBall(b,p1b.x,p1b.y,1,1); if (b.shooter===p2||b.shooter===p2b) b.state='returning'; triggerBounceRing(p1b.x,p1b.y,PADDLE_INSET,'z'); continue; }
       }
       // Bricks first — they're flush with the end walls, same z threshold as wall bounce
-      if (b.vel.z > 0 && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { if (b.state!=='idle') b.state='returning'; continue; }
-      if (b.vel.z < 0 && checkBrickHit(b,p1Bricks,0,BRICK_Z1,-1)) { if (b.state!=='idle') b.state='returning'; continue; }
+      if (b.vel.z > 0 && checkBrickHit(b,p2Bricks,1,BRICK_Z2,+1)) { continue; }
+      if (b.vel.z < 0 && checkBrickHit(b,p1Bricks,0,BRICK_Z1,-1)) { continue; }
+      // End walls bounce like Pong — no scoring on wall contact
       if (b.vel.z > 0 && b.pos.z > AD-BALL_R) {
-        b.pos.z=AD-BALL_R; triggerBounceRing(b.pos.x,b.pos.y,AD,'z'); soundBrick();
-        scorePoint(0, 1);
-        if (gameState==='playing') { b.state='returning'; b.mesh.visible=true; } continue;
+        b.pos.z=AD-BALL_R; b.vel.z=-Math.abs(b.vel.z); triggerBounceRing(b.pos.x,b.pos.y,AD,'z');
       }
       if (b.vel.z < 0 && b.pos.z < BALL_R) {
-        b.pos.z=BALL_R; triggerBounceRing(b.pos.x,b.pos.y,0,'z'); soundBrick();
-        scorePoint(1, 1);
-        if (gameState==='playing') { b.state='returning'; b.mesh.visible=true; } continue;
+        b.pos.z=BALL_R; b.vel.z=Math.abs(b.vel.z); triggerBounceRing(b.pos.x,b.pos.y,0,'z');
       }
     }
 
@@ -1442,7 +1478,7 @@ renderer.setAnimationLoop((time, frame) => {
   const dt = Math.min(clock.getDelta(), 0.05);
 
   if (frame) {
-    updateXRPaddles(frame);
+    updateXRPaddles(frame, dt);
     if (gameState === 'playing') {
       if (p1.laserOn  && !p1.wasLaserOn)  shootBall(balls[0], p1,  paddle1,  p1LaserDir,  PADDLE_INSET);
       if (p1b.laserOn && !p1b.wasLaserOn) shootBall(balls[1], p1b, paddle1b, p1bLaserDir, PADDLE_INSET);
